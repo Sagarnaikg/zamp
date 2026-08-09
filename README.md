@@ -9,9 +9,26 @@ expense ledger — with field-level confidence you can actually defend.
 
 ## Quick start
 
+Create a `.env` file in the project root:
+
 ```bash
-cp .env.example .env   # then set DATABASE_URL and one LLM provider key
-docker compose up -d   # local Postgres (or point DATABASE_URL anywhere)
+# Required: any Postgres connection string (docker compose up -d gives you this one)
+DATABASE_URL=postgres://zamp:zamp@localhost:5432/zamp_dev
+
+# Required: at least ONE LLM provider key. Multiple keys unlock
+# cross-provider routing and the cross-model agreement signal.
+GOOGLE_API_KEY=...
+# OPENAI_API_KEY=...
+# ANTHROPIC_API_KEY=...
+
+# Optional: Vercel Blob storage. When unset, files are stored in ./uploads.
+# BLOB_READ_WRITE_TOKEN=...
+```
+
+Then:
+
+```bash
+docker compose up -d   # local Postgres (skip if DATABASE_URL points elsewhere)
 npm install
 npx drizzle-kit migrate
 npm run dev
