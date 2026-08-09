@@ -202,6 +202,32 @@ Suspect fields are shown with a human-readable reason (e.g. "line items sum to 8
 
 ---
 
-## 14. Deliberately not yet decided
+## 14. Local-first setup: no Vercel dependency for reviewers — [LOCKED]
+
+**Decision:** The project must run fully locally with a two-line `.env`: `DATABASE_URL` plus any one LLM provider key. File storage sits behind a small driver interface — `BLOB_READ_WRITE_TOKEN` present → Vercel Blob (the deployed instance); absent → local `uploads/` folder on disk. The repo ships a `docker-compose.yml` for one-command local Postgres, with any external Postgres connection string (e.g. free Neon) as an alternative for reviewers without Docker.
+
+**Alternatives considered:** Using Vercel Blob and Neon-via-Vercel as hard dependencies everywhere (simplest for us — one storage path), which would force a reviewer to create a Vercel account and link a project just to run the app locally.
+
+**Reasoning:** Setup experience is explicitly graded. The deployed URL is where reviewers *test* the product; the repo is where they *verify* it runs — and that second path must not require accounts beyond one LLM key. Same environment-adaptive pattern as the model routing (section 6): the app detects what's configured and degrades gracefully.
+
+**Deploy-anywhere corollary:** Vercel is *our* deploy target, not a dependency. Core code uses no Vercel-specific APIs — standard Next.js (runs on any Node host: Netlify, Railway, Render, a VPS via `npm run build && npm start`), plain-`DATABASE_URL` Postgres, and storage always through the driver interface (the disk driver suits any host with a persistent disk; Vercel Blob is one optional driver). Vercel-specific bits are confined to config (`maxDuration`) and the Blob driver.
+
+**What was cut:** Nothing functional — the deployed instance still uses Blob + Neon; the local path is an additional ~30-line storage driver, accepted as worthwhile architecture anyway.
+
+---
+
+## 15. ORM: Drizzle over Prisma — [LOCKED]
+
+**Decision:** Drizzle ORM with drizzle-kit migrations, on plain `pg` (node-postgres).
+
+**Alternatives considered:** Prisma (most popular, but heavier: its own schema DSL, a codegen step in setup, and a query engine binary); Kysely (query builder only, no migration story out of the box); raw SQL (no type safety at the query sites).
+
+**Reasoning:** Drizzle keeps the schema in TypeScript (one language everywhere), generates plain SQL migration files a reviewer can read in the repo, adds no codegen step to `npm install`, and its query API is close enough to SQL that nothing is hidden. On a graded setup experience, fewer moving parts wins.
+
+**What was cut:** Nothing functional — all options cover CRUD equally at this scale.
+
+---
+
+## 16. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.
