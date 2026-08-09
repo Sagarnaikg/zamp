@@ -43,10 +43,17 @@ src/
 ├── components/        # Frontend layer — reusable React components
 ├── server/            # Backend layer — never imported by client code
 │   ├── services/      #   Business logic / use-cases (ingestion, review, query)
-│   ├── db/            #   Drizzle schema + client
+│   ├── db/            #   Drizzle schema + client + SQL migrations
 │   ├── storage/       #   File storage drivers (local disk / Vercel Blob)
 │   ├── llm/           #   ML layer: model router, extraction, query translation
 │   ├── ingest/        #   File-kind detection (digital PDF vs scan vs image)
 │   └── confidence/    #   Field-level confidence engine (signals + reasons)
 └── middleware.ts      # Anonymous per-browser workspace cookie
+
+samples/               # Test/demo documents with known planted problems
+scripts/               # Dev tooling (sample document generation)
 ```
+
+Root config files (`package.json`, `tsconfig.json`, `next.config.ts`,
+`drizzle.config.ts`, `eslint.config.mjs`, `postcss.config.mjs`,
+`docker-compose.yml`) stay at the root — that's where their tools look for them.
