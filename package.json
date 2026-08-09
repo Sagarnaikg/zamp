@@ -9,12 +9,18 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@langchain/anthropic": "^1.5.4",
+    "@langchain/core": "^1.2.5",
+    "@langchain/google-genai": "^2.2.0",
+    "@langchain/openai": "^1.5.6",
     "@vercel/blob": "^2.7.0",
     "drizzle-orm": "^0.45.2",
     "next": "16.3.0",
     "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "unpdf": "^1.8.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -25,7 +31,9 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "pdf-lib": "^1.17.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.11",
     "typescript": "^5"
   }
 }

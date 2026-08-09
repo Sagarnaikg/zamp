@@ -11,8 +11,13 @@ export function middleware(request: NextRequest) {
   if (request.cookies.has(WORKSPACE_COOKIE)) {
     return NextResponse.next();
   }
-  const response = NextResponse.next();
-  response.cookies.set(WORKSPACE_COOKIE, crypto.randomUUID(), {
+  const id = crypto.randomUUID();
+  // Forward the new cookie to the route handler too — otherwise the very
+  // first request would reach handlers without a workspace id.
+  const headers = new Headers(request.headers);
+  headers.append("cookie", `${WORKSPACE_COOKIE}=${id}`);
+  const response = NextResponse.next({ request: { headers } });
+  response.cookies.set(WORKSPACE_COOKIE, id, {
     httpOnly: true,
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 365,
