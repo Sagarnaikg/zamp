@@ -1,10 +1,58 @@
 import { randomUUID } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/server/db";
 import { documents, extractions, lineItems } from "@/server/db/schema";
 import { getStorage } from "@/server/storage";
 import { detectFileKind } from "@/server/ingest/detect";
-import { extract } from "@/server/llm/extraction";
+import { extract, type Extraction } from "@/server/llm/extraction";
+import { computeConfidence } from "@/server/confidence/engine";
+import type { DuplicateCandidate } from "@/server/confidence/types";
+
+/** Existing workspace documents to compare against for duplicate detection. */
+async function duplicateCandidates(
+  workspaceId: string,
+  excludeDocumentId: string,
+): Promise<DuplicateCandidate[]> {
+  const rows = await db
+    .select({
+      documentId: extractions.documentId,
+      invoiceNumber: extractions.invoiceNumber,
+      vendor: extractions.vendor,
+      total: extractions.total,
+      docDate: extractions.docDate,
+      filename: documents.filename,
+      status: documents.status,
+    })
+    .from(extractions)
+    .innerJoin(documents, eq(extractions.documentId, documents.id))
+    .where(
+      and(
+        eq(extractions.workspaceId, workspaceId),
+        ne(extractions.documentId, excludeDocumentId),
+        inArray(documents.status, ["needs_review", "accepted"]),
+      ),
+    );
+  return rows;
+}
+
+/** Second extraction on a different provider; absence is fine (single-key mode). */
+async function secondOpinion(
+  kind: Awaited<ReturnType<typeof detectFileKind>>["kind"],
+  file: { data: Buffer; mimeType: string; text?: string },
+  primaryProvider: string,
+): Promise<Extraction | null> {
+  try {
+    const result = await extract(kind, file, {
+      secondOpinion: true,
+      avoid: primaryProvider as never,
+    });
+    return result?.extraction ?? null;
+  } catch {
+    // A failed second opinion degrades to the remaining signals rather than
+    // failing ingestion (decisions.md §8).
+    return null;
+  }
+}
 
 export function listDocuments(workspaceId: string) {
   return db.query.documents.findMany({
@@ -51,7 +99,20 @@ export async function ingestDocument(
     if (!result) {
       throw new Error("No extraction result returned");
     }
-    const { extraction } = result;
+    const { extraction, provider } = result;
+
+    // Confidence: second opinion (cross-provider, when available), duplicate
+    // history, arithmetic and format checks (decisions.md §8).
+    const fileInput = { data: file.data, mimeType: file.type, text };
+    const [second, candidates] = await Promise.all([
+      secondOpinion(kind, fileInput, provider),
+      duplicateCandidates(workspaceId, doc.id),
+    ]);
+    const confidence = computeConfidence({
+      extraction,
+      secondOpinion: second,
+      duplicateCandidates: candidates,
+    });
 
     await db.insert(extractions).values({
       documentId: doc.id,
@@ -64,6 +125,7 @@ export async function ingestDocument(
       tax: extraction.tax?.toString() ?? null,
       total: extraction.total?.toString() ?? null,
       category: extraction.category,
+      fieldMeta: confidence.fieldMeta,
     });
 
     if (extraction.line_items.length > 0) {
