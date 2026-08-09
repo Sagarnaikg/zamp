@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { HumanMessage } from "@langchain/core/messages";
 import { route, type Provider } from "./router";
-import type { FileKind } from "@/lib/ingest/detect";
+import type { FileKind } from "@/server/ingest/detect";
 
 export const CATEGORIES = [
   "software",

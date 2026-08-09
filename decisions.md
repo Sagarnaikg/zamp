@@ -228,6 +228,18 @@ Suspect fields are shown with a human-readable reason (e.g. "line items sum to 8
 
 ---
 
-## 16. Deliberately not yet decided
+## 16. Project architecture: layered structure with a services layer — [LOCKED]
+
+**Decision:** Explicit layering under `src/`: `app/` (routing — thin pages and API endpoints), `components/` (frontend), and `server/` (backend, never imported by client code) subdivided into `services/` (business logic), `db/`, `storage/`, `llm/`, `ingest/`, and `confidence/`. API routes are HTTP adapters only: parse/validate the request, call a service, shape the response. The full ingestion flow lives in `server/services/documents.ts`, not in the route.
+
+**Alternatives considered:** Flat `lib/` grab-bag (the initial state — works at small scale but mixes ML, storage, and domain logic in one bucket); full hexagonal/clean architecture with repository interfaces and dependency injection (rejected: ceremony without payoff at this size — Drizzle's query API already is the data-access abstraction, and a repositories-wrapping-ORM layer would be indirection for its own sake).
+
+**Reasoning:** A reviewer should find any concern in one guess, and the seams should be where the system would actually grow: a new document type touches `ingest/` + `llm/`, a new confidence signal is one module in `confidence/`, a new storage backend is one driver file, background-queue ingestion later means calling the same service from a worker instead of the route. Services keep business logic testable without HTTP.
+
+**What was cut:** Repository/DI layers; a separate backend package or monorepo split (one Next.js app is the deploy target — decisions.md §7).
+
+---
+
+## 17. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.

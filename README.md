@@ -33,3 +33,20 @@ npm install
 npx drizzle-kit migrate
 npm run dev
 ```
+
+## Project structure
+
+```
+src/
+├── app/               # Routing layer — Next.js pages + API endpoints, kept thin
+│   └── api/           #   HTTP only: parse request → call service → shape response
+├── components/        # Frontend layer — reusable React components
+├── server/            # Backend layer — never imported by client code
+│   ├── services/      #   Business logic / use-cases (ingestion, review, query)
+│   ├── db/            #   Drizzle schema + client
+│   ├── storage/       #   File storage drivers (local disk / Vercel Blob)
+│   ├── llm/           #   ML layer: model router, extraction, query translation
+│   ├── ingest/        #   File-kind detection (digital PDF vs scan vs image)
+│   └── confidence/    #   Field-level confidence engine (signals + reasons)
+└── middleware.ts      # Anonymous per-browser workspace cookie
+```
