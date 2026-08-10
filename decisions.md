@@ -167,7 +167,7 @@ Suspect fields are shown with a human-readable reason (e.g. "line items sum to 8
 - `documents` — one row per upload: blob URL, filename, file kind (digital PDF / scanned PDF / image), status (`processing` → `needs_review` → `accepted`, or `failed`), timestamps.
 - `extractions` — one row per document: real typed columns for vendor, invoice number, date, currency, subtotal, tax, total, category (so SQL filtering/aggregation works naturally), plus one JSONB column for per-field confidence metadata (score + human-readable reasons — displayed, never filtered on).
 - `line_items` — description, quantity, unit price, amount, position. Own table because line-item math is a core confidence signal and item-level queries are expected.
-- `corrections` — field name, original value, corrected value, timestamp. Audit trail: human fixes are recorded, never silently overwritten.
+- `audit_logs` — field name, original value, corrected value, timestamp. Audit trail: human fixes are recorded, never silently overwritten.
 
 **Deliberately absent:** users table (anonymous cookie workspaces instead — section 10; all tables carry `workspace_id`), vendors table (normalization is a stretch goal; vendor stays a string), vector/embedding storage.
 
@@ -178,7 +178,7 @@ Suspect fields are shown with a human-readable reason (e.g. "line items sum to 8
 **Decision:** The product is exactly two use cases — (1) upload documents and review/correct the extraction before it enters the ledger, (2) ask plain-English questions over the accepted data — delivered as three views:
 
 1. **Inbox/upload** — drop zone + document list with status (`processing` / `needs review` / `accepted` / `failed`). Designed empty state for first visit.
-2. **Review** — original document side-by-side with extracted fields; clean fields quietly checked, flagged fields show their plain-English reason and a one-click fix where the signals point at a specific answer (e.g. "Use $847.00" when line-item math contradicts the read total). Accept → ledger; every edit → corrections audit trail.
+2. **Review** — original document side-by-side with extracted fields; clean fields quietly checked, flagged fields show their plain-English reason and a one-click fix where the signals point at a specific answer (e.g. "Use $847.00" when line-item math contradicts the read total). Accept → ledger; every edit → audit_logs trail.
 3. **Ledger + query** — table of accepted documents (sortable, filterable, rows link to originals) with the NL query box above; answers come back as number + matching rows + an interpretation chip ("category = software, July 2026, sum of total") so the user can verify what the query did.
 
 **Demo provision:** a bundled set of sample documents with planted problems — a clean digital invoice (all green), a blurry phone-photo receipt, an invoice whose printed math is genuinely wrong (triggers the arithmetic flag), and a near-duplicate pair (triggers the duplicate warning). A "Try sample documents" button on the empty state runs them through the real pipeline, so a reviewer with no invoices at hand sees the full story — including the failure modes, which are the product's point — in under a minute. README maps each sample to the signal it demonstrates.

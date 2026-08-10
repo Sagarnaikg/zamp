@@ -89,10 +89,10 @@ export const lineItems = pgTable("line_items", {
 });
 
 /**
- * Audit trail of human fixes made in the review UI.
+ * Audit log of human fixes made in the review UI.
  * Rows are only ever inserted — extraction values change, history doesn't.
  */
-export const corrections = pgTable("corrections", {
+export const auditLogs = pgTable("audit_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
   documentId: uuid("document_id")
     .notNull()

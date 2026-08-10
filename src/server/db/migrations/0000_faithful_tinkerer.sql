@@ -1,6 +1,6 @@
 CREATE TYPE "public"."document_status" AS ENUM('processing', 'needs_review', 'accepted', 'failed');--> statement-breakpoint
 CREATE TYPE "public"."file_kind" AS ENUM('digital_pdf', 'scanned_pdf', 'image');--> statement-breakpoint
-CREATE TABLE "corrections" (
+CREATE TABLE "audit_logs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"document_id" uuid NOT NULL,
 	"workspace_id" text NOT NULL,
@@ -52,6 +52,6 @@ CREATE TABLE "line_items" (
 	"amount" numeric(14, 2)
 );
 --> statement-breakpoint
-ALTER TABLE "corrections" ADD CONSTRAINT "corrections_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "extractions" ADD CONSTRAINT "extractions_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "line_items" ADD CONSTRAINT "line_items_document_id_documents_id_fk" FOREIGN KEY ("document_id") REFERENCES "public"."documents"("id") ON DELETE cascade ON UPDATE no action;

@@ -1,11 +1,11 @@
 {
-  "id": "b367ea3c-4e82-44df-a62a-98731b184db6",
+  "id": "a594f4f1-6ed2-43f0-91e3-0528877b8df9",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.corrections": {
-      "name": "corrections",
+    "public.audit_logs": {
+      "name": "audit_logs",
       "schema": "",
       "columns": {
         "id": {
@@ -55,9 +55,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "corrections_document_id_documents_id_fk": {
-          "name": "corrections_document_id_documents_id_fk",
-          "tableFrom": "corrections",
+        "audit_logs_document_id_documents_id_fk": {
+          "name": "audit_logs_document_id_documents_id_fk",
+          "tableFrom": "audit_logs",
           "tableTo": "documents",
           "columnsFrom": [
             "document_id"

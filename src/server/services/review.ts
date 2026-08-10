@@ -1,7 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/server/db";
 import {
-  corrections,
+  auditLogs,
   documents,
   extractions,
   lineItems,
@@ -43,13 +43,13 @@ export async function getDocumentDetail(workspaceId: string, documentId: string)
       where: eq(lineItems.documentId, documentId),
       orderBy: [asc(lineItems.position)],
     }),
-    db.query.corrections.findMany({
-      where: eq(corrections.documentId, documentId),
-      orderBy: [asc(corrections.createdAt)],
+    db.query.auditLogs.findMany({
+      where: eq(auditLogs.documentId, documentId),
+      orderBy: [asc(auditLogs.createdAt)],
     }),
   ]);
 
-  return { document: doc, extraction, lineItems: items, corrections: history };
+  return { document: doc, extraction, lineItems: items, auditLog: history };
 }
 
 /**
@@ -79,7 +79,7 @@ export async function correctFields(
     if (oldValue === newValue) continue;
 
     updates[field] = newValue;
-    await db.insert(corrections).values({
+    await db.insert(auditLogs).values({
       documentId,
       workspaceId,
       field,
