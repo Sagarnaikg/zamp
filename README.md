@@ -43,6 +43,51 @@ npx drizzle-kit migrate
 npm run dev
 ```
 
+## Adding an LLM provider
+
+The app ships with Google, OpenAI, and Anthropic — deliberately not an
+open-ended plugin system, since each provider needs a LangChain integration
+package anyway, which makes adding one a code change regardless.
+
+Everything provider-specific lives in `src/server/llm/providers.ts`. Adding a
+fourth is one entry there, plus its key variable:
+
+1. **Install the integration:** `npm install @langchain/<provider>`
+
+2. **Extend the union** in `providers.ts`:
+   ```ts
+   export type Provider = "google" | "openai" | "anthropic" | "mistral";
+   ```
+   This is the useful part: `PROVIDERS` and `PROVIDER_KEY_VARS` are both
+   `Record<Provider, …>`, so **the build now fails until every required piece
+   is filled in.** The compiler walks you through the rest rather than letting
+   you half-add a provider.
+
+3. **Add it to `PROVIDER_ORDER`** — this is the preference order when several
+   providers are configured; the first is used for primary extraction.
+
+4. **Add its `PROVIDERS` entry**, which answers five questions:
+   - `listUrl` / `listHeaders` / `parseModels` — how to ask the provider which
+     models this account can use (that's what runtime discovery calls)
+   - `include` / `exclude` — which of those model IDs are general-purpose chat
+     models, versus embeddings, TTS, image generation, etc.
+   - `cheapPreference` / `strongPreference` — ordered regex lists; the first
+     pattern that matches an available model wins that tier
+   - `create` — build a LangChain chat client for a model ID + key
+
+5. **Add the key variable** to `PROVIDER_KEY_VARS` in `capabilities.ts`
+   (e.g. `mistral: "MISTRAL_API_KEY"`).
+
+6. **Only if the provider needs a non-standard attachment format**, add a case
+   to `fileBlock()` in `extraction.ts`. Most providers accept LangChain's
+   standard file/image blocks; Google is special-cased there because
+   `@langchain/google-genai` gates standard file blocks behind a model-name
+   check that rejects its own `-latest` aliases.
+
+Nothing else changes — the router, confidence engine, and services are all
+provider-agnostic. There are no model IDs to pin: discovery asks the provider
+what the account can reach and ranks the answer into tiers.
+
 ## Project structure
 
 ```
