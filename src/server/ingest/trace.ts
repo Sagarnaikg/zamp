@@ -5,18 +5,89 @@ import type { TokenUsage } from "@/server/llm/usage";
  *
  * Ingestion makes a series of decisions the user never sees — which model
  * read the document, whether a second reading was worth paying for, what
- * the tiebreaker concluded. Recording them turns "Processing…" into an
- * account of what actually happened, and doubles as the observability that
- * makes a failure diagnosable after the fact.
+ * the tiebreaker concluded. This records them as a graph so the UI can draw
+ * the architecture, and doubles as the observability that makes a failure
+ * diagnosable after the fact.
  */
 
-export type StageStatus = "ok" | "skipped" | "failed";
+/** A status a stage can actually report while running. */
+export type RecordedStatus = "ok" | "skipped" | "failed";
 
-export interface PipelineStage {
-  /** Stable identifier — the UI keys off this, not the label. */
+/** Adds the view-only state for nodes that never reported at all. */
+export type StageStatus = RecordedStatus | "pending";
+
+/** Static shape of the pipeline — known before anything runs. */
+export interface PipelineNode {
   key: string;
   label: string;
-  status: StageStatus;
+  /** Top-level grouping for display: "Intake", "Reading", ... */
+  phase: string;
+  /** Parallel track within a phase, when there is one. */
+  branch?: string;
+  /** Node keys with an edge into this one; empty means it's a root. */
+  dependsOn: string[];
+}
+
+/**
+ * The pipeline as an actual DAG. Verification and duplicate checking are
+ * genuinely independent — the duplicate check compares against workspace
+ * history and never looks at the readings — so they fan out after the first
+ * reading and merge again at scoring.
+ *
+ *   store → detect → extract ─┬→ validate → second_reading → compare → tiebreak ─┬→ score
+ *                             └→ duplicates ──────────────────────────────────────┘
+ */
+export const PIPELINE_GRAPH: PipelineNode[] = [
+  { key: "store", label: "Store original", phase: "Intake", dependsOn: [] },
+  { key: "detect", label: "Detect document type", phase: "Intake", dependsOn: ["store"] },
+  { key: "extract", label: "First reading", phase: "Reading", dependsOn: ["detect"] },
+  {
+    key: "validate",
+    label: "Validate",
+    phase: "Verification",
+    branch: "Checks",
+    dependsOn: ["extract"],
+  },
+  {
+    key: "second_reading",
+    label: "Second reading",
+    phase: "Verification",
+    branch: "Checks",
+    dependsOn: ["validate"],
+  },
+  {
+    key: "compare",
+    label: "Compare readings",
+    phase: "Verification",
+    branch: "Checks",
+    dependsOn: ["second_reading"],
+  },
+  {
+    key: "tiebreak",
+    label: "Focused re-read",
+    phase: "Verification",
+    branch: "Checks",
+    dependsOn: ["compare"],
+  },
+  {
+    key: "duplicates",
+    label: "Duplicate check",
+    phase: "Verification",
+    branch: "History",
+    dependsOn: ["extract"],
+  },
+  {
+    key: "score",
+    label: "Score confidence",
+    phase: "Decision",
+    dependsOn: ["tiebreak", "duplicates"],
+  },
+];
+
+/** What actually happened at one node. */
+export interface StageResult {
+  key: string;
+  status: RecordedStatus;
   /** Plain-English account of what this stage did or why it was skipped. */
   detail: string;
   durationMs: number;
@@ -25,22 +96,15 @@ export interface PipelineStage {
   usage?: TokenUsage;
 }
 
-/**
- * The canonical stage order, including stages that may be skipped — so the
- * UI can draw the whole pipeline and grey out the parts that didn't run,
- * rather than only showing what happened to execute.
- */
-export const PIPELINE_STAGES: Array<{ key: string; label: string }> = [
-  { key: "store", label: "Store original" },
-  { key: "detect", label: "Detect document type" },
-  { key: "extract", label: "First reading" },
-  { key: "validate", label: "Validate" },
-  { key: "second_reading", label: "Second reading" },
-  { key: "compare", label: "Compare readings" },
-  { key: "tiebreak", label: "Focused re-read" },
-  { key: "duplicates", label: "Duplicate check" },
-  { key: "score", label: "Score confidence" },
-];
+/** A node with its runtime result merged in — what the UI renders. */
+export type PipelineViewNode = PipelineNode &
+  Omit<StageResult, "key" | "status"> & { status: StageStatus };
+
+export interface PipelineView {
+  nodes: PipelineViewNode[];
+  edges: Array<{ from: string; to: string }>;
+  totals: { durationMs: number; calls: number; tokens: number };
+}
 
 export interface StageDetail {
   detail: string;
@@ -50,7 +114,7 @@ export interface StageDetail {
 }
 
 export class PipelineTrace {
-  private readonly stages: PipelineStage[] = [];
+  private readonly results: StageResult[] = [];
 
   /** Timestamp to measure a stage from. */
   begin(): number {
@@ -59,19 +123,11 @@ export class PipelineTrace {
 
   private push(
     key: string,
-    status: StageStatus,
+    status: RecordedStatus,
     since: number,
     info: StageDetail,
   ): void {
-    const label =
-      PIPELINE_STAGES.find((s) => s.key === key)?.label ?? key;
-    this.stages.push({
-      key,
-      label,
-      status,
-      durationMs: Date.now() - since,
-      ...info,
-    });
+    this.results.push({ key, status, durationMs: Date.now() - since, ...info });
   }
 
   ok(key: string, since: number, info: StageDetail): void {
@@ -87,19 +143,44 @@ export class PipelineTrace {
     this.push(key, "failed", since, { detail: reason });
   }
 
-  toJSON(): PipelineStage[] {
-    return this.stages;
+  toJSON(): StageResult[] {
+    return this.results;
   }
+}
 
-  /** Totals for a summary line above the graph. */
-  summary(): { durationMs: number; calls: number; tokens: number } {
-    return this.stages.reduce(
-      (acc, s) => ({
-        durationMs: acc.durationMs + s.durationMs,
-        calls: acc.calls + (s.usage?.calls ?? 0),
-        tokens: acc.tokens + (s.usage?.total ?? 0),
-      }),
-      { durationMs: 0, calls: 0, tokens: 0 },
-    );
-  }
+/**
+ * Merge recorded results onto the static graph. Nodes that never reported a
+ * result come back as `pending` rather than being omitted, so the UI always
+ * draws the same shape and greys out what didn't run.
+ */
+export function buildPipelineView(results: StageResult[]): PipelineView {
+  const byKey = new Map(results.map((r) => [r.key, r]));
+
+  const nodes: PipelineViewNode[] = PIPELINE_GRAPH.map((node) => {
+    const result = byKey.get(node.key);
+    return {
+      ...node,
+      status: result?.status ?? "pending",
+      detail: result?.detail ?? "",
+      durationMs: result?.durationMs ?? 0,
+      provider: result?.provider,
+      model: result?.model,
+      usage: result?.usage,
+    };
+  });
+
+  const edges = PIPELINE_GRAPH.flatMap((node) =>
+    node.dependsOn.map((from) => ({ from, to: node.key })),
+  );
+
+  const totals = results.reduce(
+    (acc, r) => ({
+      durationMs: acc.durationMs + r.durationMs,
+      calls: acc.calls + (r.usage?.calls ?? 0),
+      tokens: acc.tokens + (r.usage?.total ?? 0),
+    }),
+    { durationMs: 0, calls: 0, tokens: 0 },
+  );
+
+  return { nodes, edges, totals };
 }

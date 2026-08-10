@@ -23,10 +23,13 @@ export const fileKind = pgEnum("file_kind", [
   "image",
 ]);
 
-/** One recorded step of the ingestion pipeline (see server/ingest/trace.ts). */
-export type PipelineStage = {
+/**
+ * What one pipeline stage did. Only runtime results are stored — labels and
+ * edges live in the static graph (server/ingest/trace.ts) and are merged in
+ * on read, so changing a label doesn't require rewriting history.
+ */
+export type StageResult = {
   key: string;
-  label: string;
   status: "ok" | "skipped" | "failed";
   detail: string;
   durationMs: number;
@@ -47,7 +50,7 @@ export const documents = pgTable("documents", {
   status: documentStatus("status").notNull().default("processing"),
   error: text("error"),
   /** What ingestion actually did, stage by stage — surfaced in the UI. */
-  pipeline: jsonb("pipeline").$type<PipelineStage[]>().notNull().default([]),
+  pipeline: jsonb("pipeline").$type<StageResult[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

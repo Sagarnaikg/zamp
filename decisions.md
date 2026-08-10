@@ -381,7 +381,16 @@ Cropping made it *worse* at every size, and produced identical values every time
 
 ## 23. Pipeline trace: make the architecture visible — [LOCKED]
 
-**Decision:** Ingestion records what it actually did, stage by stage, and stores it on the document. Each stage carries a status (`ok` / `skipped` / `failed`), a plain-English detail line, a duration, and — where a model was called — the provider, model ID, and token cost. The document detail endpoint returns the trace alongside `PIPELINE_STAGES`, the canonical ordered list, so a UI can draw the whole pipeline and grey out what didn't run rather than only showing what happened to execute.
+**Decision:** Ingestion records what it actually did and returns it as a **graph**: `{ nodes, edges, totals }`. Each node carries a status (`ok` / `skipped` / `failed` / `pending`), a plain-English detail line, a duration, its phase and branch for layout, and — where a model was called — the provider, model ID, and token cost. Edges come from each node's declared dependencies.
+
+The graph is split into a **static shape** (`PIPELINE_GRAPH` — labels, phases, edges, known before anything runs) and **runtime results** (what's stored per document). They're merged on read, so a node that never ran still appears as `pending` and a label change doesn't require rewriting stored history.
+
+The pipeline is a genuine DAG rather than a list, because verification and duplicate checking are independent — the duplicate check compares against workspace history and never looks at the readings — so they fan out after the first reading and merge again at scoring:
+
+```
+store → detect → extract ─┬→ validate → second_reading → compare → tiebreak ─┬→ score
+                          └→ duplicates ──────────────────────────────────────┘
+```
 
 **Reasoning:** Every interesting decision this system makes is currently invisible. A user watching "Processing…" has no idea that two different providers read their document, that the second reading was skipped because the arithmetic already reconciled, or that a third focused re-read overruled the first one. Those decisions *are* the product — the whole thesis is that trustworthy extraction means showing your work, and until now we showed it per-field but not per-pipeline. Recording it also gives real observability: a failed document now carries the stages that succeeded before the failure, so it's diagnosable after the fact instead of just "failed".
 

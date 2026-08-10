@@ -7,7 +7,7 @@ import {
   lineItems,
   type FieldMeta,
 } from "@/server/db/schema";
-import { PIPELINE_STAGES } from "@/server/ingest/trace";
+import { buildPipelineView } from "@/server/ingest/trace";
 
 /** Fields a human may correct in review. Allow-list, not reflection. */
 const CORRECTABLE_FIELDS = [
@@ -55,9 +55,9 @@ export async function getDocumentDetail(workspaceId: string, documentId: string)
     extraction,
     lineItems: items,
     auditLog: history,
-    // The canonical stage list lets the UI draw the whole pipeline and grey
-    // out what didn't run, instead of only showing what happened to execute.
-    pipelineStages: PIPELINE_STAGES,
+    // Nodes + edges, with every stage present (unrun ones as "pending"), so
+    // the UI draws the same graph shape regardless of which path executed.
+    pipeline: buildPipelineView(doc.pipeline),
   };
 }
 
