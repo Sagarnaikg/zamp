@@ -22,7 +22,7 @@ export type Task =
 /** Model IDs per provider, tiered. Pinned here so there is one place to update. */
 const MODELS: Record<Provider, { cheap: string; strong: string }> = {
   google: { cheap: "gemini-flash-lite-latest", strong: "gemini-flash-latest" },
-  openai: { cheap: "gpt-4o-mini", strong: "gpt-4o-mini" },
+  openai: { cheap: "gpt-5.4-mini", strong: "gpt-5.4-mini" },
   anthropic: { cheap: "claude-haiku-4-5", strong: "claude-sonnet-5" },
 };
 

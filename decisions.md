@@ -264,6 +264,23 @@ Suspect fields are shown with a human-readable reason (e.g. "line items sum to 8
 
 ---
 
-## 18. Deliberately not yet decided
+## 18. Provider failures: classify, retry, and make failure recoverable — [LOCKED]
+
+**Decision:** Three layers between a provider error and the user:
+1. **Classification** (`llm/errors.ts`) — map raw provider errors to a `kind`, a plain-English message, and a `retryable` flag. A rate limit reads "The AI provider is rate-limiting requests right now. Wait a moment and retry this document," not `[429] Resource exhausted: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count`.
+2. **Automatic retry** — transient failures (429, 5xx, timeouts) retry up to 3 times with exponential backoff plus jitter. Non-retryable failures (bad key, model unavailable) throw on the first attempt rather than burning 3 attempts on a certainty.
+3. **Manual retry endpoint** — `POST /api/documents/:id/retry` re-runs extraction on the *stored* file. A failed document costs one click, not a re-upload.
+
+**Alternatives considered:** Surface raw provider errors (what we had — fast to build, awful to receive); fail the upload entirely on a provider error, requiring re-upload (loses the file the user already gave us for no reason, since it's already in storage); a background job queue with automatic re-processing (correct at scale, but a queue plus worker plus polling UI is a day of work for a one-day build — the retry endpoint gets most of the value for an hour).
+
+**Reasoning:** Rate limits are not an edge case on free-tier provider keys — they are the *expected* failure for anyone running this from a clone, which makes them a setup-experience problem, not just an error-handling one. The distinction that matters to a user is "wait and retry" vs "fix your config," so that's exactly what the classifier encodes. Splitting the ingestion pipeline into `processDocument()` (shared by upload and retry) also made the retry path near-free: extraction upserts rather than inserts, and line items are replaced, so re-running is idempotent.
+
+**What was cut:** Background queue processing; automatic retry of *failed documents* on a timer (the user decides when, since each retry spends quota); partial-result persistence when extraction half-succeeds.
+
+**Bug surfaced while testing:** the OpenAI project key in use had access to exactly one model (`gpt-5.4-mini`), not the `gpt-4o-mini` that was pinned in the router — a 403 that, before this work, would have surfaced as a raw provider string. It now reads as an actionable config message, and it's the reason model IDs are treated as environment-specific config to verify rather than constants to assume.
+
+---
+
+## 19. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.

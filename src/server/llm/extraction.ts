@@ -2,6 +2,7 @@ import { z } from "zod";
 import { HumanMessage } from "@langchain/core/messages";
 import { route, type Provider } from "./router";
 import { normalizeExtraFields } from "@/server/ingest/normalize";
+import { withRetry } from "./errors";
 import type { FileKind } from "@/server/ingest/detect";
 
 export const CATEGORIES = [
@@ -86,16 +87,30 @@ function normalized(result: Extraction): Extraction {
  * without that check. Isolated in one place so the workaround stays
  * contained and provider-agnostic callers stay clean.
  */
-function fileBlock(provider: Provider, data: Buffer, mimeType: string) {
+function fileBlock(
+  provider: Provider,
+  data: Buffer,
+  mimeType: string,
+  filename: string,
+) {
   const base64 = data.toString("base64");
   if (provider === "google") {
     return { type: "media", mimeType, data: base64 };
+  }
+  // OpenAI rejects file uploads without a filename (it otherwise substitutes
+  // a placeholder and warns); images go through the image block instead.
+  if (mimeType.startsWith("image/")) {
+    return {
+      type: "image_url",
+      image_url: { url: `data:${mimeType};base64,${base64}` },
+    };
   }
   return {
     type: "file",
     source_type: "base64",
     mime_type: mimeType,
     data: base64,
+    metadata: { filename },
   };
 }
 
@@ -111,9 +126,11 @@ export async function extractFromText(
   const structured = routed.model.withStructuredOutput(extractionSchema, {
     name: "document_extraction",
   });
-  const result = await structured.invoke([
-    new HumanMessage(`${PROMPT}\n\nDocument text:\n\n${text}`),
-  ]);
+  const result = await withRetry(() =>
+    structured.invoke([
+      new HumanMessage(`${PROMPT}\n\nDocument text:\n\n${text}`),
+    ]),
+  );
   return { extraction: normalized(result as Extraction), provider: routed.provider, modelId: routed.modelId };
 }
 
@@ -121,7 +138,7 @@ export async function extractFromText(
 export async function extractFromFile(
   data: Buffer,
   mimeType: string,
-  opts?: { avoid?: Provider; secondOpinion?: boolean },
+  opts?: { avoid?: Provider; secondOpinion?: boolean; filename?: string },
 ) {
   const routed = route(
     opts?.secondOpinion ? "second_opinion" : "extract_vision",
@@ -130,21 +147,23 @@ export async function extractFromFile(
   const structured = routed.model.withStructuredOutput(extractionSchema, {
     name: "document_extraction",
   });
-  const result = await structured.invoke([
-    new HumanMessage({
-      content: [
-        { type: "text", text: PROMPT },
-        fileBlock(routed.provider, data, mimeType),
-      ],
-    }),
-  ]);
+  const result = await withRetry(() =>
+    structured.invoke([
+      new HumanMessage({
+        content: [
+          { type: "text", text: PROMPT },
+          fileBlock(routed.provider, data, mimeType, opts?.filename ?? "document"),
+        ],
+      }),
+    ]),
+  );
   return { extraction: normalized(result as Extraction), provider: routed.provider, modelId: routed.modelId };
 }
 
 /** Route to the right extraction path for a detected file kind. */
 export async function extract(
   kind: FileKind,
-  file: { data: Buffer; mimeType: string; text?: string },
+  file: { data: Buffer; mimeType: string; text?: string; filename?: string },
   opts?: { avoid?: Provider; secondOpinion?: boolean },
 ) {
   // Second opinions always read the document visually. For digital PDFs the
@@ -154,5 +173,8 @@ export async function extract(
   if (kind === "digital_pdf" && file.text && !opts?.secondOpinion) {
     return extractFromText(file.text, opts);
   }
-  return extractFromFile(file.data, file.mimeType, opts);
+  return extractFromFile(file.data, file.mimeType, {
+    ...opts,
+    filename: file.filename,
+  });
 }

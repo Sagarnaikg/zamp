@@ -5,6 +5,7 @@ import { documents, extractions, lineItems } from "@/server/db/schema";
 import { getStorage } from "@/server/storage";
 import { detectFileKind } from "@/server/ingest/detect";
 import { extract, type Extraction } from "@/server/llm/extraction";
+import { classifyLlmError } from "@/server/llm/errors";
 import { computeConfidence } from "@/server/confidence/engine";
 import type { DuplicateCandidate } from "@/server/confidence/types";
 
@@ -87,29 +88,53 @@ export async function ingestDocument(
     })
     .returning();
 
+  return processDocument(workspaceId, doc.id, {
+    type: file.type,
+    data: file.data,
+    name: file.name,
+  });
+}
+
+/**
+ * Detect → extract → score → persist, for a document row whose file is
+ * already stored. Shared by upload and retry so a transient provider
+ * failure never requires re-uploading the file.
+ */
+async function processDocument(
+  workspaceId: string,
+  documentId: string,
+  file: { type: string; data: Buffer; name: string },
+) {
   try {
     const { kind, text } = await detectFileKind(file.data, file.type);
     await db
       .update(documents)
-      .set({ fileKind: kind, updatedAt: new Date() })
-      .where(eq(documents.id, doc.id));
+      .set({ fileKind: kind, status: "processing", error: null, updatedAt: new Date() })
+      .where(eq(documents.id, documentId));
 
     const result = await extract(kind, {
       data: file.data,
       mimeType: file.type,
       text,
+      filename: file.name,
     });
     if (!result) {
       throw new Error("No extraction result returned");
     }
     const { extraction, provider } = result;
 
-    // Confidence: second opinion (cross-provider, when available), duplicate
-    // history, arithmetic and format checks (decisions.md §8).
-    const fileInput = { data: file.data, mimeType: file.type, text };
+    // Confidence: second reading (different provider when available, else a
+    // different tier + modality), duplicate history, arithmetic and format
+    // checks (decisions.md §8).
+    const fileInput = {
+      data: file.data,
+      mimeType: file.type,
+      text,
+      filename: file.name,
+    };
     const [second, candidates] = await Promise.all([
       secondOpinion(kind, fileInput, provider),
-      duplicateCandidates(workspaceId, doc.id),
+      duplicateCandidates(workspaceId, documentId),
     ]);
     const confidence = computeConfidence({
       extraction,
@@ -117,8 +142,8 @@ export async function ingestDocument(
       duplicateCandidates: candidates,
     });
 
-    await db.insert(extractions).values({
-      documentId: doc.id,
+    const row = {
+      documentId,
       workspaceId,
       vendor: extraction.vendor,
       invoiceNumber: extraction.invoice_number,
@@ -130,12 +155,21 @@ export async function ingestDocument(
       category: extraction.category,
       extraFields: extraction.extra_fields,
       fieldMeta: confidence.fieldMeta,
-    });
+    };
+    // A retry re-extracts the same document, so upsert rather than insert.
+    await db
+      .insert(extractions)
+      .values(row)
+      .onConflictDoUpdate({
+        target: extractions.documentId,
+        set: { ...row, updatedAt: new Date() },
+      });
 
+    await db.delete(lineItems).where(eq(lineItems.documentId, documentId));
     if (extraction.line_items.length > 0) {
       await db.insert(lineItems).values(
         extraction.line_items.map((item, i) => ({
-          documentId: doc.id,
+          documentId,
           workspaceId,
           position: i,
           description: item.description,
@@ -149,16 +183,37 @@ export async function ingestDocument(
     const [updated] = await db
       .update(documents)
       .set({ status: "needs_review", updatedAt: new Date() })
-      .where(eq(documents.id, doc.id))
+      .where(eq(documents.id, documentId))
       .returning();
     return { document: updated };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Extraction failed";
+    const { message, retryable, kind } = classifyLlmError(err);
     const [failed] = await db
       .update(documents)
       .set({ status: "failed", error: message, updatedAt: new Date() })
-      .where(eq(documents.id, doc.id))
+      .where(eq(documents.id, documentId))
       .returning();
-    return { document: failed, error: message };
+    return { document: failed, error: message, retryable, errorKind: kind };
   }
+}
+
+/**
+ * Re-run extraction on a stored document. The file is already in storage,
+ * so a rate limit or provider blip costs the user one click, not a re-upload.
+ */
+export async function retryDocument(workspaceId: string, documentId: string) {
+  const doc = await db.query.documents.findFirst({
+    where: and(
+      eq(documents.id, documentId),
+      eq(documents.workspaceId, workspaceId),
+    ),
+  });
+  if (!doc) return null;
+
+  const data = await getStorage().get(doc.storagePath);
+  return processDocument(workspaceId, doc.id, {
+    type: doc.mimeType,
+    data,
+    name: doc.filename,
+  });
 }
