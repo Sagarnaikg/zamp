@@ -4,15 +4,16 @@ import { PROVIDERS, PROVIDER_ORDER } from "./providers";
 /**
  * Startup capability discovery (decisions.md §19).
  *
- * Model availability is per-key, not universal: the same provider will serve
+ * Model availability is per-key, not universal: the same provider serves
  * different model sets to different accounts, and IDs are retired without
  * notice. Hardcoding them means a reviewer with a valid key can still hit a
- * 404/403 and has to edit source to fix it. Instead we ask each provider
- * what this key can actually use, then pick tiers from what came back.
+ * 404/403 and has to edit source to fix it. Instead we ask each configured
+ * provider what this key can actually use, then pick tiers from what came
+ * back.
  *
- * Keys are supplied generically — LLM_API_KEY / LLM_API_KEYS — and the
- * provider is identified from the key itself, so setup is "paste your
- * key(s)" with no per-provider variable to get right.
+ * Keys are named per provider — GOOGLE_API_KEY, OPENAI_API_KEY,
+ * ANTHROPIC_API_KEY — so a key is bound to its provider by the variable it
+ * sits in, with nothing to infer.
  */
 
 export interface ProviderCapability {
@@ -35,90 +36,32 @@ export interface Capabilities {
 
 type EnvLike = Record<string, string | undefined>;
 
-/**
- * Accept whichever multi-key syntax someone reaches for: a bare
- * comma-separated list, or a JSON array. Guessing wrong here costs a user a
- * confusing "invalid key" message when their key was fine, so both parse.
- */
-function parseKeyList(value: string | undefined): string[] {
-  const trimmed = value?.trim();
-  if (!trimmed) return [];
+/** The environment variable each provider's key lives in. */
+export const PROVIDER_KEY_VARS: Record<Provider, string> = {
+  google: "GOOGLE_API_KEY",
+  openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+};
 
-  if (trimmed.startsWith("[")) {
-    try {
-      const parsed: unknown = JSON.parse(trimmed);
-      if (Array.isArray(parsed)) {
-        return parsed.flatMap((entry) => {
-          if (typeof entry === "string") return [entry];
-          // Objects like {"provider":"gemini","apiKey":"..."} — the provider
-          // label is ignored on purpose: it's detected from the key itself,
-          // so a mislabelled entry still works instead of failing.
-          if (entry && typeof entry === "object") {
-            const record = entry as Record<string, unknown>;
-            const key =
-              record.apiKey ?? record.api_key ?? record.key ?? record.value;
-            if (typeof key === "string") return [key];
-          }
-          return [];
-        });
-      }
-    } catch {
-      // Malformed JSON — fall through and treat it as a delimited list, after
-      // stripping the brackets, rather than rejecting the keys outright.
-    }
-    return trimmed.slice(1, -1).split(",");
-  }
-
-  return trimmed.split(",");
+export interface ConfiguredKey {
+  provider: Provider;
+  apiKey: string;
 }
 
 /**
- * A value of "[" or similar means the env parser hit a newline mid-value:
- * .env has no multi-line support, so the rest of the file was swallowed too.
- * Worth naming exactly, because "invalid key" would send someone hunting in
- * completely the wrong place.
+ * Which providers have a key configured, in preference order. Quotes are
+ * stripped because they're easy to leave in by accident and never part of a
+ * real key.
  */
-function looksTruncated(value: string | undefined): boolean {
-  const trimmed = value?.trim();
-  if (!trimmed) return false;
-  return trimmed.startsWith("[") && !trimmed.endsWith("]");
-}
-
-/** Quotes are easy to leave in by accident and never part of a real key. */
-function unquote(value: string): string {
-  return value.trim().replace(/^["']|["']$/g, "").trim();
-}
-
-/** Read keys from the generic vars first, then the per-provider ones. */
-export function collectApiKeys(env: EnvLike): string[] {
-  const raw = [
-    ...parseKeyList(env.LLM_API_KEY),
-    ...parseKeyList(env.LLM_API_KEYS),
-    // Per-provider names still work for anyone who prefers being explicit.
-    env.GOOGLE_API_KEY,
-    env.OPENAI_API_KEY,
-    env.ANTHROPIC_API_KEY,
-  ];
-  const seen = new Set<string>();
-  const keys: string[] = [];
-  for (const value of raw) {
-    const key = value === undefined ? "" : unquote(value);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    keys.push(key);
+export function configuredKeys(env: EnvLike): ConfiguredKey[] {
+  const keys: ConfiguredKey[] = [];
+  for (const provider of PROVIDER_ORDER) {
+    const raw = env[PROVIDER_KEY_VARS[provider]]?.trim();
+    if (!raw) continue;
+    const apiKey = raw.replace(/^["']|["']$/g, "").trim();
+    if (apiKey) keys.push({ provider, apiKey });
   }
   return keys;
-}
-
-/**
- * Identify a provider from the key's shape. A hint only — discovery
- * confirms it by actually listing models, so a wrong guess self-corrects.
- */
-export function guessProvider(apiKey: string): Provider | null {
-  if (apiKey.startsWith("sk-ant-")) return "anthropic";
-  if (apiKey.startsWith("sk-")) return "openai";
-  if (apiKey.startsWith("AIza") || apiKey.startsWith("AQ.")) return "google";
-  return null;
 }
 
 /** Rank the models a key can actually use into a cheap and a strong tier. */
@@ -158,76 +101,51 @@ async function listModels(provider: Provider, apiKey: string): Promise<string[]>
   return spec.parseModels(await response.json());
 }
 
-async function probeKey(apiKey: string): Promise<ProviderCapability | null> {
-  // Try the guessed provider first, then the rest — a key whose format we
-  // don't recognize still works, it just costs an extra request or two.
-  const guess = guessProvider(apiKey);
-  const order = guess
-    ? [guess, ...PROVIDER_ORDER.filter((p) => p !== guess)]
-    : PROVIDER_ORDER;
-
-  for (const provider of order) {
-    try {
-      const models = await listModels(provider, apiKey);
-      const tiers = selectTiers(provider, models);
-      if (!tiers) continue;
-      return { provider, apiKey, ...tiers, availableModels: models };
-    } catch {
-      // Wrong provider for this key, or provider unreachable — try the next.
-    }
+async function probe({
+  provider,
+  apiKey,
+}: ConfiguredKey): Promise<ProviderCapability | null> {
+  try {
+    const models = await listModels(provider, apiKey);
+    const tiers = selectTiers(provider, models);
+    if (!tiers) return null;
+    return { provider, apiKey, ...tiers, availableModels: models };
+  } catch {
+    // Bad key, revoked key, or the provider is unreachable — the other
+    // configured providers can still carry the app.
+    return null;
   }
-  return null;
 }
 
 async function discover(env: EnvLike): Promise<Capabilities> {
-  const keys = collectApiKeys(env);
+  const configured = configuredKeys(env);
   const discoveredAt = new Date().toISOString();
 
-  if (looksTruncated(env.LLM_API_KEY) || looksTruncated(env.LLM_API_KEYS)) {
+  if (configured.length === 0) {
     return {
       ready: false,
       providers: [],
-      problem:
-        ".env values cannot span multiple lines — the key list was cut off at the first line break (and everything after it in the file was ignored). Put the whole value on one line, e.g. LLM_API_KEYS=key-one,key-two",
+      problem: `No LLM API key found. Add one of ${Object.values(PROVIDER_KEY_VARS).join(", ")} to .env, then restart.`,
       discoveredAt,
     };
   }
 
-  if (keys.length === 0) {
-    return {
-      ready: false,
-      providers: [],
-      problem:
-        "No LLM API key found. Add LLM_API_KEY=your-key to .env (OpenAI, Anthropic, or Google keys all work), then restart.",
-      discoveredAt,
-    };
-  }
-
-  const results = await Promise.all(keys.map(probeKey));
+  const results = await Promise.all(configured.map(probe));
   const providers = results.filter((r): r is ProviderCapability => r !== null);
 
   if (providers.length === 0) {
+    const names = configured
+      .map((c) => PROVIDER_KEY_VARS[c.provider])
+      .join(", ");
     return {
       ready: false,
       providers: [],
-      problem:
-        "Found API key(s), but none could reach a usable model. The key may be invalid, revoked, or the account may not have access to any chat model.",
+      problem: `Found ${names}, but no usable model could be reached. The key may be invalid or revoked, or the account may not have access to any chat model.`,
       discoveredAt,
     };
   }
 
-  // Deduplicate: two keys for the same provider add nothing.
-  const byProvider = new Map<Provider, ProviderCapability>();
-  for (const capability of providers) {
-    if (!byProvider.has(capability.provider)) {
-      byProvider.set(capability.provider, capability);
-    }
-  }
-  const ordered = PROVIDER_ORDER.map((p) => byProvider.get(p)).filter(
-    (c): c is ProviderCapability => c !== undefined,
-  );
-
-  return { ready: true, providers: ordered, problem: null, discoveredAt };
+  return { ready: true, providers, problem: null, discoveredAt };
 }
 
 let cached: Promise<Capabilities> | null = null;
