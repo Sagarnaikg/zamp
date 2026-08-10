@@ -19,14 +19,14 @@ export const CATEGORIES = [
   "other",
 ] as const;
 
-export const lineItemSchema = z.object({
+const lineItemSchema = z.object({
   description: z.string().nullable().describe("What was purchased"),
   quantity: z.number().nullable(),
   unit_price: z.number().nullable(),
   amount: z.number().nullable().describe("Line total for this item"),
 });
 
-export const extractionSchema = z.object({
+const extractionSchema = z.object({
   vendor: z.string().nullable().describe("Business that issued the document"),
   invoice_number: z.string().nullable(),
   doc_date: z
@@ -67,7 +67,7 @@ export type Extraction = z.infer<typeof extractionSchema>;
  * items and extra fields would be output tokens we parse and discard
  * (decisions.md §21).
  */
-export const comparableSchema = extractionSchema.pick({
+const comparableSchema = extractionSchema.pick({
   vendor: true,
   invoice_number: true,
   doc_date: true,
@@ -95,7 +95,7 @@ Rules:
  */
 const MAX_TEXT_CHARS = 24_000;
 
-export function clampText(text: string): string {
+function clampText(text: string): string {
   if (text.length <= MAX_TEXT_CHARS) return text;
   const half = Math.floor(MAX_TEXT_CHARS / 2);
   return `${text.slice(0, half)}\n\n[... ${text.length - MAX_TEXT_CHARS} characters omitted ...]\n\n${text.slice(-half)}`;
@@ -150,7 +150,7 @@ function fileBlock(
 }
 
 /** Extract from a digital PDF's text layer (cheap text model). */
-export async function extractFromText(
+async function extractFromText(
   text: string,
   opts?: { avoid?: Provider; secondOpinion?: boolean },
 ) {
@@ -177,7 +177,7 @@ export async function extractFromText(
 }
 
 /** Extract from a scanned PDF or image (strong vision model). */
-export async function extractFromFile(
+async function extractFromFile(
   data: Buffer,
   mimeType: string,
   opts?: { avoid?: Provider; secondOpinion?: boolean; filename?: string },

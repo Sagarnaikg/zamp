@@ -1,4 +1,5 @@
 import { type Extraction, type Finding } from "./types";
+import { MONEY_FIELDS } from "./compare";
 
 /**
  * Format/plausibility validation (decisions.md §8): values that parse and
@@ -85,7 +86,7 @@ export function formatSignal(
     }
   }
 
-  for (const field of ["subtotal", "tax", "total"] as const) {
+  for (const field of MONEY_FIELDS) {
     const value = extraction[field];
     if (value !== null && value < 0) {
       findings.push({

@@ -31,8 +31,13 @@ export const CONFIDENCE = {
   MISSING: 0,
 } as const;
 
-/** A field below this needs the user's eyes; at/above it renders as clean. */
-export const REVIEW_THRESHOLD = 0.7;
+/**
+ * A field below this needs the user's eyes; at or above it renders as clean.
+ * Defined as the unverified bucket rather than repeating its value, so the
+ * two can't silently drift apart: "extracted and plausible, but nothing
+ * corroborates it" is precisely the weakest state we still accept.
+ */
+export const REVIEW_THRESHOLD: number = CONFIDENCE.UNVERIFIED;
 
 export interface ConfidenceInput {
   extraction: Extraction;

@@ -1,4 +1,4 @@
-import { type Extraction, toCents } from "./types";
+import { toCents } from "./types";
 
 /**
  * Field-aware value comparison, shared by the agreement signal and the
@@ -21,13 +21,16 @@ export const COMPARABLE_FIELDS = [
 
 export type ComparableField = (typeof COMPARABLE_FIELDS)[number];
 
-const MONEY_FIELDS = new Set<string>(["subtotal", "tax", "total"]);
+/** Amount fields — compared numerically, and checked together elsewhere. */
+export const MONEY_FIELDS = ["subtotal", "tax", "total"] as const;
+
+const MONEY_FIELD_SET = new Set<string>(MONEY_FIELDS);
 const TEXT_FIELDS = new Set<string>(["vendor", "invoice_number"]);
 
 /** Reduce a value to the form used for equality checks. */
-export function normalizeValue(field: string, value: unknown): unknown {
+function normalizeValue(field: string, value: unknown): unknown {
   if (value === null || value === undefined) return null;
-  if (MONEY_FIELDS.has(field)) return toCents(value as number);
+  if (MONEY_FIELD_SET.has(field)) return toCents(value as number);
   if (TEXT_FIELDS.has(field)) {
     return String(value).toLowerCase().replace(/[^a-z0-9]/g, "") || null;
   }
@@ -54,11 +57,4 @@ export function valuesMatch(
 export function displayValue(value: unknown): string {
   if (value === null || value === undefined) return "nothing";
   return typeof value === "string" ? `"${value}"` : String(value);
-}
-
-export function fieldValue(
-  extraction: Extraction,
-  field: ComparableField,
-): unknown {
-  return extraction[field];
 }

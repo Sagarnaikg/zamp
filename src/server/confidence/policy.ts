@@ -1,4 +1,5 @@
 import { CONFIDENCE, type ConfidenceResult } from "./engine";
+import { MONEY_FIELDS } from "./compare";
 import type { FileKind } from "@/server/ingest/detect";
 
 /**
@@ -24,7 +25,7 @@ export function needsSecondReading(
 ): boolean {
   if (kind !== "digital_pdf") return true;
   if (firstPass.flaggedCount > 0) return true;
-  return !["subtotal", "tax", "total"].every(
+  return !MONEY_FIELDS.every(
     (field) =>
       (firstPass.fieldMeta[field]?.confidence ?? 0) >= CONFIDENCE.VERIFIED,
   );
