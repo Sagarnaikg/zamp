@@ -325,6 +325,36 @@ Suspect fields are shown with a human-readable reason (e.g. "line items sum to 8
 
 ---
 
-## 21. Deliberately not yet decided
+## 21. LLM cost: measure it, then spend it only where it buys something — [LOCKED]
+
+**Decision:** Four changes, in the order they matter:
+
+1. **Measure first.** Every model call reports its token usage, accumulated per document and stored on the extraction row. Optimizing an unmeasured cost is guesswork, and this is the product's only real operating expense.
+2. **Adaptive second reading.** The second reading no longer runs unconditionally. Deterministic checks run first, and their result decides: a **digital PDF** whose arithmetic reconciles and whose validations pass skips it; **scans and photos always get it**. Rationale: a PDF's text layer is exact characters, so the OCR-misread failure mode a second reading guards against barely exists — whereas for pixels it's the dominant one. Where the document's own math already corroborates the numbers, that's stronger evidence than another model's opinion.
+3. **Reduced schema for the second reading.** It exists only to be compared field-by-field, and only eight scalar fields are compared — so it no longer re-extracts line items and extra fields we parse and discard. Output tokens scale with line count, so this saves most on the biggest invoices.
+4. **Text clamping.** A pathological multi-page PDF keeps its head and tail (vendor/number/date at the top, totals at the bottom) rather than paying for the middle.
+
+**Measured on real documents:**
+
+| Document | Model calls | Input tokens | Output tokens |
+|---|---|---|---|
+| Clean digital invoice (PDF) | **1** (was 2) | 454 | 443 |
+| Phone-photo receipt (image) | 2 | 2,680 | 432 |
+
+Roughly half the cost on the clean-PDF path, and — the part that matters — **no new review work**: the skipped document came back with nothing flagged, money fields still corroborated at 0.9 by arithmetic.
+
+**Alternatives considered:**
+- *Always run both readings* (previous behaviour). Simplest and marginally safer, but pays double on the documents least likely to be wrong.
+- *Skip based on the model's self-reported confidence.* Rejected for the same reason the whole confidence engine exists — that number is not evidence.
+- *Always skip the second reading and lean on validation alone.* Would break the product: arithmetic can't check a vendor name or a date, and photos genuinely need two eyes.
+- *Downscale images before vision calls.* Real savings (tokens scale with image tiles), but it needs a native image dependency in the production bundle, and a resize failure on a deploy target would break ingestion for a cost win. Deliberately deferred — noted rather than built.
+
+**Tradeoff accepted, stated plainly:** on a clean digital PDF, the text fields (vendor, invoice number, category) now sit at "unverified" rather than "verified", because nothing independently corroborates them. They are *not* flagged and create no review work — but the badge is honest about the weaker evidence, which is the point. If a user wants maximum verification regardless of cost, the policy is one pure function (`confidence/policy.ts`) with its own tests.
+
+**What was cut:** Image downscaling (above); caching identical re-uploads by content hash before extraction (duplicate detection already catches them *after* extraction — the saving is real but the code path needs care around retries); per-provider price tables to report cost in currency rather than tokens.
+
+---
+
+## 22. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.

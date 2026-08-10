@@ -60,6 +60,14 @@ export type FieldMeta = Record<
  */
 export type ExtraField = { key: string; label: string; value: string };
 
+/** Token cost of the model calls that produced this extraction. */
+export type TokenUsage = {
+  input: number;
+  output: number;
+  total: number;
+  calls: number;
+};
+
 export const extractions = pgTable("extractions", {
   id: uuid("id").primaryKey().defaultRandom(),
   documentId: uuid("document_id")
@@ -80,6 +88,10 @@ export const extractions = pgTable("extractions", {
     .notNull()
     .default([]),
   fieldMeta: jsonb("field_meta").$type<FieldMeta>().notNull().default({}),
+  usage: jsonb("usage")
+    .$type<TokenUsage>()
+    .notNull()
+    .default({ input: 0, output: 0, total: 0, calls: 0 }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

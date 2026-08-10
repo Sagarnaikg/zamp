@@ -3,6 +3,7 @@ import { HumanMessage } from "@langchain/core/messages";
 import { route, type Provider } from "./router";
 import { normalizeExtraFields } from "@/server/ingest/normalize";
 import { withRetry } from "./errors";
+import { usageFromResponse, type TokenUsage } from "./usage";
 import type { FileKind } from "@/server/ingest/detect";
 
 export const CATEGORIES = [
@@ -60,6 +61,23 @@ export const extractionSchema = z.object({
 
 export type Extraction = z.infer<typeof extractionSchema>;
 
+/**
+ * The second reading exists only to be compared field-by-field against the
+ * first, and only these scalar fields are compared — re-extracting line
+ * items and extra fields would be output tokens we parse and discard
+ * (decisions.md §21).
+ */
+export const comparableSchema = extractionSchema.pick({
+  vendor: true,
+  invoice_number: true,
+  doc_date: true,
+  currency: true,
+  subtotal: true,
+  tax: true,
+  total: true,
+  category: true,
+});
+
 const PROMPT = `You are extracting structured data from an invoice, receipt, or expense document.
 
 Rules:
@@ -70,8 +88,25 @@ Rules:
 - category: pick the closest match for what was purchased.
 - extra_fields: capture ALL other labeled data on the document (PO numbers, due dates, payment terms, tax IDs, addresses, reference numbers). Nothing legible should be lost — if it has a label and a value, include it. Give each a normalized snake_case key: the same concept always gets the same key ("PO No" and "Purchase Order Number" are both po_number).`;
 
-/** Post-process one model output: canonicalize extra-field keys. */
+/**
+ * Guard against pathological input: an invoice's meaningful content is at
+ * the top (vendor, number, date) and the bottom (totals), so a very long
+ * document keeps both ends rather than paying for the middle.
+ */
+const MAX_TEXT_CHARS = 24_000;
+
+export function clampText(text: string): string {
+  if (text.length <= MAX_TEXT_CHARS) return text;
+  const half = Math.floor(MAX_TEXT_CHARS / 2);
+  return `${text.slice(0, half)}\n\n[... ${text.length - MAX_TEXT_CHARS} characters omitted ...]\n\n${text.slice(-half)}`;
+}
+
+/**
+ * Post-process one model output: canonicalize extra-field keys. The second
+ * reading uses the reduced schema and has no extra fields to normalize.
+ */
 function normalized(result: Extraction): Extraction {
+  if (!result.extra_fields) return result;
   return {
     ...result,
     extra_fields: normalizeExtraFields(result.extra_fields),
@@ -123,15 +158,22 @@ export async function extractFromText(
     opts?.secondOpinion ? "second_opinion" : "extract_text",
     opts?.avoid,
   );
-  const structured = routed.model.withStructuredOutput(extractionSchema, {
+  const schema = opts?.secondOpinion ? comparableSchema : extractionSchema;
+  const structured = routed.model.withStructuredOutput(schema, {
     name: "document_extraction",
+    includeRaw: true,
   });
-  const result = await withRetry(() =>
+  const { parsed, raw } = await withRetry(() =>
     structured.invoke([
-      new HumanMessage(`${PROMPT}\n\nDocument text:\n\n${text}`),
+      new HumanMessage(`${PROMPT}\n\nDocument text:\n\n${clampText(text)}`),
     ]),
   );
-  return { extraction: normalized(result as Extraction), provider: routed.provider, modelId: routed.modelId };
+  return {
+    extraction: normalized(parsed as Extraction),
+    provider: routed.provider,
+    modelId: routed.modelId,
+    usage: usageFromResponse(raw),
+  };
 }
 
 /** Extract from a scanned PDF or image (strong vision model). */
@@ -144,10 +186,12 @@ export async function extractFromFile(
     opts?.secondOpinion ? "second_opinion" : "extract_vision",
     opts?.avoid,
   );
-  const structured = routed.model.withStructuredOutput(extractionSchema, {
+  const schema = opts?.secondOpinion ? comparableSchema : extractionSchema;
+  const structured = routed.model.withStructuredOutput(schema, {
     name: "document_extraction",
+    includeRaw: true,
   });
-  const result = await withRetry(() =>
+  const { parsed, raw } = await withRetry(() =>
     structured.invoke([
       new HumanMessage({
         content: [
@@ -157,7 +201,12 @@ export async function extractFromFile(
       }),
     ]),
   );
-  return { extraction: normalized(result as Extraction), provider: routed.provider, modelId: routed.modelId };
+  return {
+    extraction: normalized(parsed as Extraction),
+    provider: routed.provider,
+    modelId: routed.modelId,
+    usage: usageFromResponse(raw),
+  };
 }
 
 // Field rules must match the main prompt exactly: a re-read that returns
@@ -184,7 +233,7 @@ export async function extractFocused(
   fields: readonly string[],
   file: { data: Buffer; mimeType: string; filename?: string },
   opts?: { avoid?: Provider },
-): Promise<Partial<Extraction> | null> {
+): Promise<{ fields: Partial<Extraction>; usage: TokenUsage } | null> {
   if (fields.length === 0) return null;
 
   const mask = Object.fromEntries(fields.map((f) => [f, true as const]));
@@ -196,9 +245,10 @@ export async function extractFocused(
   const routed = await route("second_opinion", opts?.avoid);
   const structured = routed.model.withStructuredOutput(focusedSchema, {
     name: "focused_recheck",
+    includeRaw: true,
   });
 
-  const result = await withRetry(() =>
+  const { parsed, raw } = await withRetry(() =>
     structured.invoke([
       new HumanMessage({
         content: [
@@ -216,7 +266,10 @@ export async function extractFocused(
       }),
     ]),
   );
-  return result as Partial<Extraction>;
+  return {
+    fields: parsed as Partial<Extraction>,
+    usage: usageFromResponse(raw),
+  };
 }
 
 /** Route to the right extraction path for a detected file kind. */

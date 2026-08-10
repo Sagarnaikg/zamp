@@ -1,0 +1,1 @@
+ALTER TABLE "extractions" ADD COLUMN "usage" jsonb DEFAULT '{"input":0,"output":0,"total":0,"calls":0}'::jsonb NOT NULL;

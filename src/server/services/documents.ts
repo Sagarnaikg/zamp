@@ -10,7 +10,9 @@ import {
   type Extraction,
 } from "@/server/llm/extraction";
 import { classifyLlmError } from "@/server/llm/errors";
+import { addUsage, emptyUsage, type TokenUsage } from "@/server/llm/usage";
 import { computeConfidence } from "@/server/confidence/engine";
+import { needsSecondReading } from "@/server/confidence/policy";
 import type { DuplicateCandidate } from "@/server/confidence/types";
 
 /** Existing workspace documents to compare against for duplicate detection. */
@@ -50,17 +52,17 @@ async function secondOpinion(
   kind: Awaited<ReturnType<typeof detectFileKind>>["kind"],
   file: { data: Buffer; mimeType: string; text?: string },
   primaryProvider: string,
-): Promise<Extraction | null> {
+) {
   try {
-    const result = await extract(kind, file, {
+    return await extract(kind, file, {
       secondOpinion: true,
       avoid: primaryProvider as never,
     });
-    return result?.extraction ?? null;
   } catch {
     return null;
   }
 }
+
 
 /**
  * Third, focused reading of only the disputed fields. Like the second
@@ -71,7 +73,7 @@ async function focusedRecheck(
   fields: readonly string[],
   file: { data: Buffer; mimeType: string; filename?: string },
   primaryProvider: string,
-): Promise<Partial<Extraction> | null> {
+) {
   try {
     return await extractFocused(fields, file, {
       avoid: primaryProvider as never,
@@ -145,6 +147,7 @@ async function processDocument(
       throw new Error("No extraction result returned");
     }
     const { extraction, provider } = result;
+    let usage: TokenUsage = addUsage(emptyUsage(), result.usage);
 
     // Confidence: second reading (different provider when available, else a
     // different tier + modality), duplicate history, arithmetic and format
@@ -155,15 +158,25 @@ async function processDocument(
       text,
       filename: file.name,
     };
-    const [second, candidates] = await Promise.all([
-      secondOpinion(kind, fileInput, provider),
-      duplicateCandidates(workspaceId, documentId),
-    ]);
-    let confidence = computeConfidence({
-      extraction,
-      secondOpinion: second,
-      duplicateCandidates: candidates,
-    });
+    const candidates = await duplicateCandidates(workspaceId, documentId);
+
+    // Cheap deterministic checks first; they decide whether the expensive
+    // ones are needed at all (decisions.md §21).
+    let confidence = computeConfidence({ extraction, duplicateCandidates: candidates });
+
+    let second: Extraction | null = null;
+    if (needsSecondReading(kind, confidence)) {
+      const reading = await secondOpinion(kind, fileInput, provider);
+      if (reading) {
+        second = reading.extraction;
+        usage = addUsage(usage, reading.usage);
+        confidence = computeConfidence({
+          extraction,
+          secondOpinion: second,
+          duplicateCandidates: candidates,
+        });
+      }
+    }
 
     // Escalation before humans: where the two readings disagree, re-read
     // just those fields and let majority voting settle it (decisions.md §20).
@@ -174,10 +187,11 @@ async function processDocument(
         provider,
       );
       if (tiebreak) {
+        usage = addUsage(usage, tiebreak.usage);
         confidence = computeConfidence({
           extraction,
           secondOpinion: second,
-          tiebreak,
+          tiebreak: tiebreak.fields,
           duplicateCandidates: candidates,
         });
       }
@@ -199,6 +213,7 @@ async function processDocument(
       category: resolved.category,
       extraFields: extraction.extra_fields,
       fieldMeta: confidence.fieldMeta,
+      usage,
     };
     // A retry re-extracts the same document, so upsert rather than insert.
     await db

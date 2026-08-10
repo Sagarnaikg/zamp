@@ -4,7 +4,7 @@ import * as schema from "./schema";
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
-    "DATABASE_URL is not set. Copy .env.example to .env and point it at a Postgres instance.",
+    "DATABASE_URL is not set. Add it to .env — see the quick start in README.md.",
   );
 }
 
