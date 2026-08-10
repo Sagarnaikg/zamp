@@ -1,54 +1,14 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { ChatOpenAI } from "@langchain/openai";
-import { ChatAnthropic } from "@langchain/anthropic";
+import { PROVIDERS, type Provider } from "./providers";
+import { getCapabilities, type ProviderCapability } from "./capabilities";
 
-/**
- * Environment-adaptive model router (decisions.md §6).
- *
- * One provider key is enough to run everything; with multiple keys the
- * second-opinion task automatically lands on a different provider, which
- * is what makes the cross-model agreement signal meaningful.
- */
-
-export type Provider = "google" | "openai" | "anthropic";
+export type { Provider };
 
 export type Task =
-  | "extract_vision" // scans/photos → strong vision model
-  | "extract_text" // digital-PDF text → cheap text model
-  | "second_opinion" // re-extraction, ideally on a different provider
+  | "extract_vision" // scans/photos → strong model
+  | "extract_text" // digital-PDF text → cheap model
+  | "second_opinion" // independent re-reading for the agreement signal
   | "query_translate"; // NL → filter DSL, cheap and fast
-
-/** Model IDs per provider, tiered. Pinned here so there is one place to update. */
-const MODELS: Record<Provider, { cheap: string; strong: string }> = {
-  google: { cheap: "gemini-flash-lite-latest", strong: "gemini-flash-latest" },
-  openai: { cheap: "gpt-5.4-mini", strong: "gpt-5.4-mini" },
-  anthropic: { cheap: "claude-haiku-4-5", strong: "claude-sonnet-5" },
-};
-
-/** Preference order reflects available quota (decisions.md §6). */
-const PROVIDER_PREFERENCE: Provider[] = ["google", "openai", "anthropic"];
-
-const KEY_VARS: Record<Provider, string> = {
-  google: "GOOGLE_API_KEY",
-  openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-};
-
-export function availableProviders(): Provider[] {
-  return PROVIDER_PREFERENCE.filter((p) => !!process.env[KEY_VARS[p]]);
-}
-
-function makeModel(provider: Provider, modelId: string): BaseChatModel {
-  switch (provider) {
-    case "google":
-      return new ChatGoogleGenerativeAI({ model: modelId, temperature: 0 });
-    case "openai":
-      return new ChatOpenAI({ model: modelId, temperature: 0 });
-    case "anthropic":
-      return new ChatAnthropic({ model: modelId });
-  }
-}
 
 export interface RoutedModel {
   provider: Provider;
@@ -56,36 +16,43 @@ export interface RoutedModel {
   model: BaseChatModel;
 }
 
+/** Error the API layer can turn into a setup message rather than a 500. */
+export class NoProviderError extends Error {
+  constructor(problem: string) {
+    super(problem);
+    this.name = "NoProviderError";
+  }
+}
+
+function pickModel(capability: ProviderCapability, task: Task): string {
+  // Vision extraction and second readings get the strong tier; frequent,
+  // simple tasks get the cheap one (decisions.md §6).
+  return task === "extract_vision" || task === "second_opinion"
+    ? capability.strong
+    : capability.cheap;
+}
+
 /**
- * Pick a model for a task. `avoid` lets the second-opinion task prefer a
- * different provider than the primary extraction used (most independent
- * errors). With a single configured provider, the reviewer stays on that
- * provider but the caller decorrelates the reading another way: a different
- * model tier here, and a different input modality in `extract()` —
- * mimicking a second human reviewer rather than a second read-through.
+ * Pick a model for a task from what this environment can actually reach.
+ * `avoid` lets the second reading prefer a different provider than the
+ * primary used; with one provider configured it falls back to the same one,
+ * where independence comes from the tier and modality difference instead.
  */
-export function route(task: Task, avoid?: Provider): RoutedModel {
-  const providers = availableProviders();
+export async function route(task: Task, avoid?: Provider): Promise<RoutedModel> {
+  const { providers, problem } = await getCapabilities();
   if (providers.length === 0) {
-    throw new Error(
-      "No LLM provider key configured. Set at least one of " +
-        Object.values(KEY_VARS).join(", ") +
-        " in .env",
-    );
+    throw new NoProviderError(problem ?? "No usable LLM provider configured.");
   }
 
-  let candidates = providers;
-  if (avoid) {
-    candidates = providers.filter((p) => p !== avoid);
-    if (candidates.length === 0) candidates = providers;
-  }
+  const preferred = avoid
+    ? providers.filter((p) => p.provider !== avoid)
+    : providers;
+  const capability = preferred[0] ?? providers[0];
 
-  const provider = candidates[0];
-  // Second opinions read the document visually with the strong tier — for a
-  // same-provider review of a digital PDF this flips both the model AND the
-  // modality relative to the primary (cheap tier + text layer).
-  const tier =
-    task === "extract_vision" || task === "second_opinion" ? "strong" : "cheap";
-  const modelId = MODELS[provider][tier];
-  return { provider, modelId, model: makeModel(provider, modelId) };
+  const modelId = pickModel(capability, task);
+  return {
+    provider: capability.provider,
+    modelId,
+    model: PROVIDERS[capability.provider].create(modelId, capability.apiKey),
+  };
 }

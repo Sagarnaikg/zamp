@@ -72,7 +72,7 @@ export async function translateQuery(
   question: string,
   opts?: { today?: Date; extraKeys?: string[] },
 ): Promise<QueryDsl> {
-  const routed = route("query_translate");
+  const routed = await route("query_translate");
   const structured = routed.model.withStructuredOutput(queryDslSchema, {
     name: "ledger_query",
   });

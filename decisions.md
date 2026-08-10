@@ -281,6 +281,23 @@ Suspect fields are shown with a human-readable reason (e.g. "line items sum to 8
 
 ---
 
-## 19. Deliberately not yet decided
+## 19. Runtime capability discovery + provider-agnostic keys — [LOCKED]
+
+**Decision:** Stop hardcoding model IDs and stop naming providers in env vars. At startup the app collects whatever keys it has (`LLM_API_KEY`, or `LLM_API_KEYS` comma-separated), identifies each key's provider from its own shape, asks that provider's `/models` endpoint what the account can actually reach, and ranks the results into a cheap and a strong tier. `GET /api/status` exposes the outcome — providers found, models resolved, or a plain-English problem — so the UI can gate on readiness instead of letting a first upload fail mysteriously.
+
+**Alternatives considered:**
+- *Hardcoded model IDs* (what we had). Two production failures in one session proved it wrong: `gemini-2.5-flash` was retired for new keys (404) and the OpenAI project in use could reach exactly one model, `gpt-5.4-mini`, not the pinned `gpt-4o-mini` (403). Both required a source edit to fix, which breaks the "just add your key" promise.
+- *Env-overridable model IDs* (`OPENAI_MODEL=...`). Cheaper to build and keeps the failure fixable without code, but it makes the reviewer diagnose a provider error and go look up a valid ID — the app already has an API that can answer that question.
+- *Per-provider key variables* (`GOOGLE_API_KEY` etc., still supported for anyone who prefers them). Requires the user to know which variable matches the key they're holding — an avoidable way to get a valid key rejected.
+
+**Reasoning:** Model availability is a property of the *account*, not of the software, and IDs are retired without notice. Anything hardcoded is a time bomb pointed at the graded setup experience. Asking the provider costs one HTTP request per key, once per process, and turns a class of hard failures into either a working default or a message that says exactly what's wrong. Detecting the provider from the key falls out of the same probe — if the key's prefix is unrecognized, discovery tries each provider until one answers, so even an unfamiliar key format works.
+
+**Tradeoffs accepted:** one extra request per key at first use (cached process-wide); tier *ranking* is still heuristic (regex preference lists per provider) — the model set is discovered, the choice among them is our judgment; and a provider outage at startup looks the same as a bad key, which the status message acknowledges rather than guesses about.
+
+**What was cut:** Per-task model overrides; persisting discovery across restarts; automatic re-probing on a timer (`POST /api/status` re-probes on demand, which covers "I just fixed my key").
+
+---
+
+## 20. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.

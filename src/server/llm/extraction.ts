@@ -119,7 +119,7 @@ export async function extractFromText(
   text: string,
   opts?: { avoid?: Provider; secondOpinion?: boolean },
 ) {
-  const routed = route(
+  const routed = await route(
     opts?.secondOpinion ? "second_opinion" : "extract_text",
     opts?.avoid,
   );
@@ -140,7 +140,7 @@ export async function extractFromFile(
   mimeType: string,
   opts?: { avoid?: Provider; secondOpinion?: boolean; filename?: string },
 ) {
-  const routed = route(
+  const routed = await route(
     opts?.secondOpinion ? "second_opinion" : "extract_vision",
     opts?.avoid,
   );

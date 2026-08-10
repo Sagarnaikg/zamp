@@ -15,15 +15,23 @@ Create a `.env` file in the project root:
 # Required: any Postgres connection string (docker compose up -d gives you this one)
 DATABASE_URL=postgres://zamp:zamp@localhost:5432/zamp_dev
 
-# Required: at least ONE LLM provider key. Multiple keys unlock
-# cross-provider routing and the cross-model agreement signal.
-GOOGLE_API_KEY=...
-# OPENAI_API_KEY=...
-# ANTHROPIC_API_KEY=...
+# Required: at least ONE LLM API key. OpenAI, Anthropic, and Google keys are
+# all accepted — the provider is detected from the key, and the app asks the
+# provider which models your account can actually use. No model IDs to pin.
+LLM_API_KEY=your-key-here
+
+# Optional: several keys, comma-separated. A second provider strengthens the
+# confidence engine's agreement signal (two providers read each document
+# instead of one provider reading it two ways).
+# LLM_API_KEYS=sk-...,AIza...
 
 # Optional: Vercel Blob storage. When unset, files are stored in ./uploads.
 # BLOB_READ_WRITE_TOKEN=...
 ```
+
+Check setup at any time with `GET /api/status` — it reports which providers
+were found, which models they resolved to, and a plain-English problem
+message if nothing usable was reachable.
 
 Then:
 
