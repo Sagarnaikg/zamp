@@ -44,7 +44,10 @@ export const PROVIDERS: Record<Provider, ProviderSpec> = {
     include: /^gemini/i,
     // -latest aliases track the current model, so prefer them over pinned dates.
     cheapPreference: [/flash-lite-latest/i, /flash-lite/i, /flash-latest/i, /flash/i],
-    strongPreference: [/pro-latest/i, /flash-latest/i, /pro/i, /flash/i],
+    // Flash outranks Pro for the strong tier on purpose: Pro's free-tier
+    // quota is small enough that it rate-limits on ordinary use, and Flash
+    // is fully multimodal. Capability that can't be called isn't capability.
+    strongPreference: [/flash-latest/i, /flash(?!-lite)/i, /pro-latest/i, /pro/i],
     create: (modelId, apiKey) =>
       new ChatGoogleGenerativeAI({ model: modelId, apiKey, temperature: 0 }),
   },

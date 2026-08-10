@@ -7,6 +7,8 @@ import {
 import { arithmeticSignal } from "./arithmetic";
 import { formatSignal } from "./format";
 import { agreementSignal } from "./agreement";
+import { correctedValues, findDisputes, resolveDisputes } from "./tiebreak";
+import type { ComparableField } from "./compare";
 import { duplicateSignal } from "./duplicates";
 
 /**
@@ -35,6 +37,8 @@ export const REVIEW_THRESHOLD = 0.7;
 export interface ConfidenceInput {
   extraction: Extraction;
   secondOpinion?: Extraction | null;
+  /** Focused third reading of disputed fields (decisions.md §20). */
+  tiebreak?: Partial<Extraction> | null;
   duplicateCandidates?: DuplicateCandidate[];
   today?: Date;
 }
@@ -44,6 +48,10 @@ export interface ConfidenceResult {
   matchedDuplicateId: string | null;
   /** Number of fields below the review threshold (excluding missing). */
   flaggedCount: number;
+  /** Fields the two readings disagree on — the tiebreaker's work list. */
+  disputedFields: ComparableField[];
+  /** Values majority voting corrected, to persist instead of the primary's. */
+  corrections: Partial<Record<ComparableField, unknown>>;
 }
 
 const TRACKED_FIELDS = [
@@ -60,19 +68,51 @@ const TRACKED_FIELDS = [
 ] as const;
 
 export function computeConfidence(input: ConfidenceInput): ConfidenceResult {
-  const findings: Finding[] = [
-    ...arithmeticSignal(input.extraction),
-    ...formatSignal(input.extraction, input.today),
-  ];
+  const findings: Finding[] = [];
+  let disputedFields: ComparableField[] = [];
+  let corrections: Partial<Record<ComparableField, unknown>> = {};
 
+  // Resolve disputes first, because majority voting can change values —
+  // and validation must judge the value we are actually going to store,
+  // not the one the first reading proposed.
   if (input.secondOpinion) {
-    findings.push(...agreementSignal(input.extraction, input.secondOpinion));
+    disputedFields = findDisputes(input.extraction, input.secondOpinion);
+
+    if (input.tiebreak) {
+      // A third reading has already run: its verdict replaces the raw
+      // disagreement rather than stacking another flag on top of it.
+      const resolutions = resolveDisputes(
+        input.extraction,
+        input.secondOpinion,
+        input.tiebreak,
+        disputedFields,
+      );
+      corrections = correctedValues(resolutions);
+      const settled = new Set(
+        resolutions
+          .filter((r) => r.outcome === "resolved")
+          .map((r) => r.field as string),
+      );
+      // Agreement findings for fields the tiebreaker settled are superseded.
+      findings.push(
+        ...agreementSignal(input.extraction, input.secondOpinion).filter(
+          (f) => !settled.has(f.field),
+        ),
+        ...resolutions.map((r) => r.finding),
+      );
+    } else {
+      findings.push(...agreementSignal(input.extraction, input.secondOpinion));
+    }
   }
 
-  const dup = duplicateSignal(
-    input.extraction,
-    input.duplicateCandidates ?? [],
+  const resolved = { ...input.extraction, ...corrections } as Extraction;
+
+  findings.push(
+    ...arithmeticSignal(resolved),
+    ...formatSignal(resolved, input.today),
   );
+
+  const dup = duplicateSignal(resolved, input.duplicateCandidates ?? []);
   findings.push(...dup.findings);
 
   const fieldMeta: FieldMeta = {};
@@ -89,20 +129,26 @@ export function computeConfidence(input: ConfidenceInput): ConfidenceResult {
 
     if (suspects.length > 0) {
       confidence = CONFIDENCE.SUSPECT;
-      reasons = suspects.map((f) => f.reason!).filter(Boolean);
+      // Include any correction note: "we changed this, and the new value
+      // still looks wrong" is a materially different story from either half.
+      reasons = [...suspects, ...confirms]
+        .map((f) => f.reason)
+        .filter((r): r is string => !!r);
       flaggedCount++;
     } else if (missing) {
       confidence = CONFIDENCE.MISSING;
       reasons = ["Not found in the document"];
-    } else if (confirms.length >= 2) {
-      confidence = CONFIDENCE.STRONG;
-      reasons = [];
-    } else if (confirms.length === 1) {
-      confidence = CONFIDENCE.VERIFIED;
-      reasons = [];
     } else {
-      confidence = CONFIDENCE.UNVERIFIED;
-      reasons = [];
+      // A confirmation usually needs no explanation, but the tiebreaker's
+      // does: silently rewriting a value the user never saw disputed is the
+      // opposite of the transparency this product is for.
+      reasons = confirms.map((f) => f.reason).filter((r): r is string => !!r);
+      confidence =
+        confirms.length >= 2
+          ? CONFIDENCE.STRONG
+          : confirms.length === 1
+            ? CONFIDENCE.VERIFIED
+            : CONFIDENCE.UNVERIFIED;
     }
 
     fieldMeta[field] = { confidence, reasons };
@@ -112,5 +158,7 @@ export function computeConfidence(input: ConfidenceInput): ConfidenceResult {
     fieldMeta,
     matchedDuplicateId: dup.matchedDocumentId,
     flaggedCount,
+    disputedFields,
+    corrections,
   };
 }

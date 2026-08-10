@@ -54,6 +54,31 @@ describe("collectApiKeys", () => {
     ]);
   });
 
+  it("accepts a JSON array of objects, provider label and all", () => {
+    const keys = collectApiKeys({
+      LLM_API_KEYS:
+        '[{"provider":"gemini","apiKey":"AIzaOne"},{"provider":"openai","apiKey":"sk-two"}]',
+    });
+    expect(keys).toEqual(["AIzaOne", "sk-two"]);
+  });
+
+  it("reads the key from whichever field name the object uses", () => {
+    const keys = collectApiKeys({
+      LLM_API_KEYS: '[{"key":"one"},{"value":"two"},{"api_key":"three"}]',
+    });
+    expect(keys).toEqual(["one", "two", "three"]);
+  });
+
+  it("ignores a mislabelled provider rather than trusting it over the key", () => {
+    // The label says gemini; the key is plainly an OpenAI one. Detection
+    // works off the key, so the entry still resolves correctly.
+    const keys = collectApiKeys({
+      LLM_API_KEYS: '[{"provider":"gemini","apiKey":"sk-proj-actually-openai"}]',
+    });
+    expect(keys).toEqual(["sk-proj-actually-openai"]);
+    expect(guessProvider(keys[0])).toBe("openai");
+  });
+
   it("accepts a list in the singular variable too", () => {
     // The singular/plural distinction is a naming convention, not a rule the
     // user should be punished for missing.
@@ -91,8 +116,23 @@ describe("selectTiers", () => {
     ]);
     expect(tiers).toEqual({
       cheap: "gemini-flash-lite-latest",
-      strong: "gemini-pro-latest",
+      strong: "gemini-flash-latest",
     });
+  });
+
+  it("prefers Flash over Pro for the strong tier despite Pro being more capable", () => {
+    // Pro's free-tier quota rate-limits on ordinary use; an unusable model
+    // is not an upgrade.
+    const tiers = selectTiers("google", [
+      "gemini-pro-latest",
+      "gemini-flash-latest",
+    ]);
+    expect(tiers?.strong).toBe("gemini-flash-latest");
+  });
+
+  it("falls back to Pro when no Flash model is available", () => {
+    const tiers = selectTiers("google", ["gemini-pro-latest"]);
+    expect(tiers?.strong).toBe("gemini-pro-latest");
   });
 
   it("filters out non-chat Google models", () => {

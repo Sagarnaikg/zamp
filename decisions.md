@@ -298,6 +298,33 @@ Suspect fields are shown with a human-readable reason (e.g. "line items sum to 8
 
 ---
 
-## 20. Deliberately not yet decided
+## 20. Escalation ladder: re-read disputed fields before escalating to a human — [LOCKED]
+
+**Decision:** A human is the *last* resort, not the second. The pipeline now escalates in stages:
+
+1. **Two independent readings** of the document (different provider when configured, else different model tier + input modality).
+2. **Field-by-field comparison.** Agreement is evidence; disagreement marks the field disputed.
+3. **Deterministic validation** — arithmetic consistency, format/plausibility, duplicate detection. These are cheap, explainable, and catch things no amount of model agreement would (two readings can agree on a total that doesn't match the line items).
+4. **Targeted re-extraction** — only for the disputed fields, with a narrower schema and a prompt focused on careful character reading. Majority voting then settles it: 2-of-3 resolves the field, and if the third reading backs the *second*, the stored value is corrected.
+5. **Human review** — only for fields still unresolved, with every candidate value shown.
+
+**The third reading is deliberately blind.** It is never shown the two values it's adjudicating. Showing them would invite the model to rubber-stamp whichever looks more plausible; an independent third opinion is the only one whose agreement means anything.
+
+**Alternatives considered:**
+- *Escalate every disagreement straight to a human.* Simple, and what we had — but it spends the scarcest resource (attention) on cases a second look resolves for a fraction of a cent. Most disagreements in testing were one model misreading a digit, not genuine ambiguity.
+- *Adjudication prompt* ("reading A says 836, reading B says 863 — which is right?"). Cheaper to write and fewer tokens, rejected for the anchoring problem above.
+- *Re-run the full extraction a third time.* Wasteful, and dilutes attention across fields that were never in doubt. The focused schema keeps the third call small and pointed.
+
+**Reasoning:** This is the "don't wake a human for something you can check yourself" principle, and it's what makes the review queue trustworthy — a flagged field now means *we genuinely could not resolve this*, not *our first two guesses differed*. It also produces a real self-correction path: when the primary reading loses the vote, the stored value changes, and the user is told it changed rather than having it happen silently.
+
+**Verified on a deliberately degraded scan** (faded thermal print, scan noise, ambiguous digits) with two providers live: both agreed on invoice number, subtotal, tax and total — auto-accepted; disagreed on the date (`09/03/2026` read as 9 March by one, 3 September by the other — the DD/MM trap) and on currency; the focused re-read ran on exactly those two fields; the date went to a human with all three candidate values shown, and currency escalated because the third reading confirmed it genuinely isn't printed on the document. That is the ladder behaving correctly at every rung.
+
+**Bug this surfaced (and the reason step 3 now runs after step 4):** validation originally ran against the *primary* reading, so a value installed by majority voting was never re-checked. On the test document the vote corrected the date to one that was in the future — and it scored 0.98 instead of being flagged, because the arithmetic and format signals had judged a value we then discarded. Validation now runs on the resolved extraction, and a field that was corrected *and* still fails validation shows both reasons.
+
+**What was cut:** Region-level re-extraction (crop to the field's bounding box and re-read only those pixels — better still, but needs layout coordinates the current extraction doesn't return); more than three readings; a confidence-weighted vote instead of a simple majority.
+
+---
+
+## 21. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.

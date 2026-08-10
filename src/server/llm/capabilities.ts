@@ -48,7 +48,19 @@ function parseKeyList(value: string | undefined): string[] {
     try {
       const parsed: unknown = JSON.parse(trimmed);
       if (Array.isArray(parsed)) {
-        return parsed.filter((v): v is string => typeof v === "string");
+        return parsed.flatMap((entry) => {
+          if (typeof entry === "string") return [entry];
+          // Objects like {"provider":"gemini","apiKey":"..."} — the provider
+          // label is ignored on purpose: it's detected from the key itself,
+          // so a mislabelled entry still works instead of failing.
+          if (entry && typeof entry === "object") {
+            const record = entry as Record<string, unknown>;
+            const key =
+              record.apiKey ?? record.api_key ?? record.key ?? record.value;
+            if (typeof key === "string") return [key];
+          }
+          return [];
+        });
       }
     } catch {
       // Malformed JSON — fall through and treat it as a delimited list, after
@@ -58,6 +70,18 @@ function parseKeyList(value: string | undefined): string[] {
   }
 
   return trimmed.split(",");
+}
+
+/**
+ * A value of "[" or similar means the env parser hit a newline mid-value:
+ * .env has no multi-line support, so the rest of the file was swallowed too.
+ * Worth naming exactly, because "invalid key" would send someone hunting in
+ * completely the wrong place.
+ */
+function looksTruncated(value: string | undefined): boolean {
+  const trimmed = value?.trim();
+  if (!trimmed) return false;
+  return trimmed.startsWith("[") && !trimmed.endsWith("]");
 }
 
 /** Quotes are easy to leave in by accident and never part of a real key. */
@@ -158,6 +182,16 @@ async function probeKey(apiKey: string): Promise<ProviderCapability | null> {
 async function discover(env: EnvLike): Promise<Capabilities> {
   const keys = collectApiKeys(env);
   const discoveredAt = new Date().toISOString();
+
+  if (looksTruncated(env.LLM_API_KEY) || looksTruncated(env.LLM_API_KEYS)) {
+    return {
+      ready: false,
+      providers: [],
+      problem:
+        ".env values cannot span multiple lines — the key list was cut off at the first line break (and everything after it in the file was ignored). Put the whole value on one line, e.g. LLM_API_KEYS=key-one,key-two",
+      discoveredAt,
+    };
+  }
 
   if (keys.length === 0) {
     return {

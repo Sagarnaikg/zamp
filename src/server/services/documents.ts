@@ -4,7 +4,11 @@ import { db } from "@/server/db";
 import { documents, extractions, lineItems } from "@/server/db/schema";
 import { getStorage } from "@/server/storage";
 import { detectFileKind } from "@/server/ingest/detect";
-import { extract, type Extraction } from "@/server/llm/extraction";
+import {
+  extract,
+  extractFocused,
+  type Extraction,
+} from "@/server/llm/extraction";
 import { classifyLlmError } from "@/server/llm/errors";
 import { computeConfidence } from "@/server/confidence/engine";
 import type { DuplicateCandidate } from "@/server/confidence/types";
@@ -53,6 +57,25 @@ async function secondOpinion(
       avoid: primaryProvider as never,
     });
     return result?.extraction ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Third, focused reading of only the disputed fields. Like the second
+ * reading, a failure here degrades gracefully — the dispute simply stays
+ * flagged for a human instead of being auto-resolved.
+ */
+async function focusedRecheck(
+  fields: readonly string[],
+  file: { data: Buffer; mimeType: string; filename?: string },
+  primaryProvider: string,
+): Promise<Partial<Extraction> | null> {
+  try {
+    return await extractFocused(fields, file, {
+      avoid: primaryProvider as never,
+    });
   } catch {
     return null;
   }
@@ -136,23 +159,44 @@ async function processDocument(
       secondOpinion(kind, fileInput, provider),
       duplicateCandidates(workspaceId, documentId),
     ]);
-    const confidence = computeConfidence({
+    let confidence = computeConfidence({
       extraction,
       secondOpinion: second,
       duplicateCandidates: candidates,
     });
 
+    // Escalation before humans: where the two readings disagree, re-read
+    // just those fields and let majority voting settle it (decisions.md §20).
+    if (second && confidence.disputedFields.length > 0) {
+      const tiebreak = await focusedRecheck(
+        confidence.disputedFields,
+        fileInput,
+        provider,
+      );
+      if (tiebreak) {
+        confidence = computeConfidence({
+          extraction,
+          secondOpinion: second,
+          tiebreak,
+          duplicateCandidates: candidates,
+        });
+      }
+    }
+
+    // Majority voting may have overruled the primary reading on a field.
+    const resolved = { ...extraction, ...confidence.corrections } as Extraction;
+
     const row = {
       documentId,
       workspaceId,
-      vendor: extraction.vendor,
-      invoiceNumber: extraction.invoice_number,
-      docDate: extraction.doc_date,
-      currency: extraction.currency,
-      subtotal: extraction.subtotal?.toString() ?? null,
-      tax: extraction.tax?.toString() ?? null,
-      total: extraction.total?.toString() ?? null,
-      category: extraction.category,
+      vendor: resolved.vendor,
+      invoiceNumber: resolved.invoice_number,
+      docDate: resolved.doc_date,
+      currency: resolved.currency,
+      subtotal: resolved.subtotal?.toString() ?? null,
+      tax: resolved.tax?.toString() ?? null,
+      total: resolved.total?.toString() ?? null,
+      category: resolved.category,
       extraFields: extraction.extra_fields,
       fieldMeta: confidence.fieldMeta,
     };

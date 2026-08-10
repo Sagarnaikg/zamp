@@ -160,6 +160,65 @@ export async function extractFromFile(
   return { extraction: normalized(result as Extraction), provider: routed.provider, modelId: routed.modelId };
 }
 
+// Field rules must match the main prompt exactly: a re-read that returns
+// "09/03/2026" where the first pass returned "2026-03-09" looks like a
+// disagreement when it is only a formatting difference.
+const FIELD_RULES = `- doc_date must be YYYY-MM-DD. If the date format is ambiguous (e.g. 03/04/2025), use surrounding context (written month names, due dates, locale hints) to disambiguate; if still ambiguous, pick the more likely reading.
+- currency: infer from symbols/context (₹ → INR, $ → USD unless context says otherwise, € → EUR).
+- Copy numbers exactly as printed, even if the document's own arithmetic looks wrong. Do not "fix" totals.`;
+
+const FOCUSED_PROMPT = `You are double-checking specific fields on an invoice, receipt, or expense document.
+
+Read the document carefully and report ONLY the fields requested below. These values are being verified because an earlier reading was uncertain, so accuracy matters more than speed:
+- Look at the actual characters on the page. Digits that look similar (0/8, 1/7, 3/8, 5/6) are the usual source of error.
+- Use null if a field genuinely is not on the document. Do not guess.
+${FIELD_RULES}`;
+
+/**
+ * Re-read only the disputed fields, with a narrower schema and a prompt
+ * focused on careful reading (decisions.md §20). Deliberately NOT shown the
+ * candidate values it is adjudicating — an independent third opinion is
+ * worth more than a confirmation of someone else's answer.
+ */
+export async function extractFocused(
+  fields: readonly string[],
+  file: { data: Buffer; mimeType: string; filename?: string },
+  opts?: { avoid?: Provider },
+): Promise<Partial<Extraction> | null> {
+  if (fields.length === 0) return null;
+
+  const mask = Object.fromEntries(fields.map((f) => [f, true as const]));
+  const focusedSchema = extractionSchema.pick(
+    mask as Parameters<typeof extractionSchema.pick>[0],
+  );
+
+  // The deciding vote is worth the strong tier.
+  const routed = await route("second_opinion", opts?.avoid);
+  const structured = routed.model.withStructuredOutput(focusedSchema, {
+    name: "focused_recheck",
+  });
+
+  const result = await withRetry(() =>
+    structured.invoke([
+      new HumanMessage({
+        content: [
+          {
+            type: "text",
+            text: `${FOCUSED_PROMPT}\n\nFields to report: ${fields.join(", ")}`,
+          },
+          fileBlock(
+            routed.provider,
+            file.data,
+            file.mimeType,
+            file.filename ?? "document",
+          ),
+        ],
+      }),
+    ]),
+  );
+  return result as Partial<Extraction>;
+}
+
 /** Route to the right extraction path for a detected file kind. */
 export async function extract(
   kind: FileKind,
