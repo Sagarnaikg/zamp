@@ -355,6 +355,30 @@ Roughly half the cost on the clean-PDF path, and — the part that matters — *
 
 ---
 
-## 22. Deliberately not yet decided
+## 22. Region cropping for re-reads — [TRIED, MEASURED, REVERTED]
+
+**The idea (a good one):** when re-reading a disputed field, send only the part of the document it lives in — the totals block, say — instead of the whole page. Fewer image tiles to pay for, and a model looking at a small focused crop should read it more carefully than one scanning a noisy full page. Pair it with a cheaper model, on the theory that focused input compensates for a weaker reader.
+
+**Built it, then measured it. It doesn't work.** Same receipt rendered at three sizes, re-reading the same three fields, cropped versus full page:
+
+| Image size | Full page | Cropped | Saving | Values agreed |
+|---|---|---|---|---|
+| 560 × 760 | 1,305 | 1,369 | **−5%** | yes |
+| 1,200 × 1,630 | 1,333 | 1,369 | **−3%** | yes |
+| 2,400 × 3,260 | 1,333 | 1,369 | **−3%** | yes |
+
+Cropping made it *worse* at every size, and produced identical values every time — no accuracy gain either.
+
+**Why — and this is the finding worth keeping:** input tokens barely move between a 560px image and a 2,400px one (1,305 → 1,333). The providers normalize images to a fixed token budget server-side before charging, so **image dimensions are essentially not a cost lever on this stack.** Our crop only added the extra "this is a cropped section" instruction, hence the small loss.
+
+**Reverted:** the crop module, its tests, the native `@napi-rs/canvas` runtime dependency (back to dev-only, where it generates samples), the Turbopack `serverExternalPackages` workaround that native binary required, and the cheap-tier routing for re-reads — that last one only made sense if cropping compensated for the weaker model, and it doesn't. The deciding vote on a disputed field goes back to the strong tier, where it belongs.
+
+**This also retires a deferred idea:** §21 left image downscaling as the biggest unclaimed saving, on the assumption that tokens scale with resolution. They don't. That work would have been wasted, and is now cut on evidence rather than caution.
+
+**What this leaves:** the optimizations that *did* measure well stay — adaptive second reading, reduced comparison schema, text clamping (§21). Cost on this stack is driven by **number of calls**, not by how big the inputs are, which is a much simpler thing to optimize and exactly what §21 targets.
+
+---
+
+## 23. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.

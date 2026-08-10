@@ -241,7 +241,7 @@ export async function extractFocused(
     mask as Parameters<typeof extractionSchema.pick>[0],
   );
 
-  // The deciding vote is worth the strong tier.
+  // The deciding vote on a disputed field is worth the strong tier.
   const routed = await route("second_opinion", opts?.avoid);
   const structured = routed.model.withStructuredOutput(focusedSchema, {
     name: "focused_recheck",
