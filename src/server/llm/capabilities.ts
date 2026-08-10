@@ -35,11 +35,41 @@ export interface Capabilities {
 
 type EnvLike = Record<string, string | undefined>;
 
+/**
+ * Accept whichever multi-key syntax someone reaches for: a bare
+ * comma-separated list, or a JSON array. Guessing wrong here costs a user a
+ * confusing "invalid key" message when their key was fine, so both parse.
+ */
+function parseKeyList(value: string | undefined): string[] {
+  const trimmed = value?.trim();
+  if (!trimmed) return [];
+
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((v): v is string => typeof v === "string");
+      }
+    } catch {
+      // Malformed JSON — fall through and treat it as a delimited list, after
+      // stripping the brackets, rather than rejecting the keys outright.
+    }
+    return trimmed.slice(1, -1).split(",");
+  }
+
+  return trimmed.split(",");
+}
+
+/** Quotes are easy to leave in by accident and never part of a real key. */
+function unquote(value: string): string {
+  return value.trim().replace(/^["']|["']$/g, "").trim();
+}
+
 /** Read keys from the generic vars first, then the per-provider ones. */
 export function collectApiKeys(env: EnvLike): string[] {
   const raw = [
-    env.LLM_API_KEY,
-    ...(env.LLM_API_KEYS?.split(",") ?? []),
+    ...parseKeyList(env.LLM_API_KEY),
+    ...parseKeyList(env.LLM_API_KEYS),
     // Per-provider names still work for anyone who prefers being explicit.
     env.GOOGLE_API_KEY,
     env.OPENAI_API_KEY,
@@ -48,7 +78,7 @@ export function collectApiKeys(env: EnvLike): string[] {
   const seen = new Set<string>();
   const keys: string[] = [];
   for (const value of raw) {
-    const key = value?.trim();
+    const key = value === undefined ? "" : unquote(value);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     keys.push(key);

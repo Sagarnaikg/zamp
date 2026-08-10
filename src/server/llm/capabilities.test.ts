@@ -34,6 +34,34 @@ describe("collectApiKeys", () => {
   it("returns nothing when no key is configured", () => {
     expect(collectApiKeys({})).toEqual([]);
   });
+
+  it("accepts a JSON array, the other syntax people reach for", () => {
+    const keys = collectApiKeys({
+      LLM_API_KEYS: '["sk-one", "AIzaTwo"]',
+    });
+    expect(keys).toEqual(["sk-one", "AIzaTwo"]);
+  });
+
+  it("recovers keys from a malformed JSON array instead of rejecting them", () => {
+    // A missing closing bracket shouldn't read as "your key is invalid".
+    const keys = collectApiKeys({ LLM_API_KEYS: '["sk-one", "AIzaTwo"' });
+    expect(keys).toEqual(["sk-one", "AIzaTwo"]);
+  });
+
+  it("strips stray quotes around a single key", () => {
+    expect(collectApiKeys({ LLM_API_KEY: '"sk-quoted"' })).toEqual([
+      "sk-quoted",
+    ]);
+  });
+
+  it("accepts a list in the singular variable too", () => {
+    // The singular/plural distinction is a naming convention, not a rule the
+    // user should be punished for missing.
+    expect(collectApiKeys({ LLM_API_KEY: "sk-one,AIzaTwo" })).toEqual([
+      "sk-one",
+      "AIzaTwo",
+    ]);
+  });
 });
 
 describe("guessProvider", () => {
