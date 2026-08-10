@@ -4,6 +4,7 @@ import { route, type Provider } from "./router";
 import { normalizeExtraFields } from "@/server/ingest/normalize";
 import { withRetry } from "./errors";
 import { usageFromResponse, type TokenUsage } from "./usage";
+import { redactSensitive } from "@/server/security/redact";
 import type { FileKind } from "@/server/ingest/detect";
 
 export const CATEGORIES = [
@@ -102,14 +103,31 @@ function clampText(text: string): string {
 }
 
 /**
- * Post-process one model output: canonicalize extra-field keys. The second
- * reading uses the reduced schema and has no extra fields to normalize.
+ * Redact card numbers and IBANs found in a digital PDF's text layer before
+ * it reaches the model, so they don't leave our server in the first place.
+ * Vision inputs (scans, photos) can't go through this — we can't redact
+ * pixels before the model reads them, which is why `normalized()` below
+ * also redacts the model's *output*, covering both paths.
+ */
+function redactBeforeSending(text: string): string {
+  return redactSensitive(text).text;
+}
+
+/**
+ * Post-process one model output: canonicalize extra-field keys, and redact
+ * any card number or IBAN that made it into an extra field's value. This is
+ * the universal safety net — it runs regardless of whether the document was
+ * text or an image, catching what pre-send redaction can't reach on the
+ * vision path and anything a model echoed back despite the mask.
  */
 function normalized(result: Extraction): Extraction {
   if (!result.extra_fields) return result;
   return {
     ...result,
-    extra_fields: normalizeExtraFields(result.extra_fields),
+    extra_fields: normalizeExtraFields(result.extra_fields).map((field) => ({
+      ...field,
+      value: redactSensitive(field.value).text,
+    })),
   };
 }
 
@@ -165,7 +183,7 @@ async function extractFromText(
   });
   const { parsed, raw } = await withRetry(() =>
     structured.invoke([
-      new HumanMessage(`${PROMPT}\n\nDocument text:\n\n${clampText(text)}`),
+      new HumanMessage(`${PROMPT}\n\nDocument text:\n\n${redactBeforeSending(clampText(text))}`),
     ]),
   );
   return {

@@ -420,6 +420,36 @@ Clean digital invoice                    Faded scan, two providers
 
 ---
 
-## 24. Deliberately not yet decided
+## 24. Sensitive-data redaction: card numbers and IBANs — [LOCKED]
+
+**Decision:** Detect and mask credit/debit card numbers and IBANs at two points: **before** a digital PDF's text layer is sent to an LLM (so the number never leaves our server), and **after** extraction, on every extra-field value (a universal safety net that also covers the vision path, where pixels can't be pre-redacted before the model reads them).
+
+**Scoped deliberately narrow, on purpose:** only two patterns, both with a real checksum to validate against — card numbers (Luhn) and IBANs (ISO 7064 mod-97-10). A generic "bank account number" pattern was considered and rejected: without a checksum, it would misfire on invoice numbers and PO numbers, which is a worse bug than the one this exists to fix. `INV-7734` is 3 digits short of a card number and has no checksum to pass; a plausible 16-digit reference number that isn't Luhn-valid is left alone.
+
+**Alternatives considered:**
+- *Mask everything that looks like a long digit string.* Rejected for the false-positive reason above — it would corrupt the exact fields (invoice/PO numbers) the product exists to extract correctly.
+- *Only pre-send redaction.* Rejected: it can't reach the vision path at all, since there's no text to scan before the model reads the pixels — leaving scans and photos with zero protection would be the more common case for this product, not the exception.
+- *Only post-extraction redaction.* Would still send the raw number to the LLM provider on the text path, which the pre-send layer specifically avoids — defense in depth, not redundancy.
+
+**What was cut:** Threading a redaction count through the pipeline trace for visibility (would touch three extraction return signatures for a nice-to-have; the redaction itself is the ask, not its dashboard visibility — a clean later addition); generic bank-account-number detection (above); SSN/government-ID patterns (out of scope for invoices).
+
+**Verified live**, not just in tests: uploaded a generated invoice whose payment line reads a real (published test) Visa number. Stored `extra_fields` value: `"card •••• •••• •••• 1111"` — the full number never reached the database, and because redaction runs before the prompt is built, the LLM never saw it either. Core fields extracted unaffected: `INV-7734`, `$132.00`. 13 new unit tests, including the false-positive guards (invoice numbers, non-Luhn digit strings of the same length) that matter more than the positive-match cases.
+
+---
+
+## 25. Concurrency: architecture doesn't block, production scale isn't tuned — [NOTED, NOT SOLVED]
+
+**Assessment:** every service is `async`/`await` over I/O (DB, LLM calls) with no CPU-heavy synchronous work and no shared mutable per-user state — workspace scoping comes fresh from each request's cookie, and the one intentionally shared piece of state (`getCapabilities()`'s cached discovery promise) is safe because it's deployment-wide config, not per-user, and caching the `Promise` itself avoids a race on concurrent first calls. So one user's slow LLM call does not block another user's request.
+
+**Three concrete gaps, deliberately left for real scale, not this build:**
+1. **DB pool has no explicit size** — `new Pool({ connectionString })` in `db/index.ts` uses node-postgres's default (10). Fine here; would need tuning (and likely PgBouncer) under real concurrent load.
+2. **LLM provider rate limits are shared across every user of a deployment** — concurrent uploads draw on the same API key's quota. Not our limit to raise; the retry-with-backoff work (§18) is what keeps this from surfacing as raw errors.
+3. **No request queueing or per-workspace throttling** — a single workspace can currently fire unlimited concurrent uploads and consume a disproportionate share of quota. At real scale this wants a job queue (bounded concurrency) and per-workspace rate limits.
+
+**Why not solved now:** each is a real, separate piece of infrastructure work (pool tuning + PgBouncer, a queue, a rate limiter), not a design flaw to patch — and none was in scope for a one-day build behind one deployment.
+
+---
+
+## 26. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.
