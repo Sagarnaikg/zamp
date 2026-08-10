@@ -414,6 +414,8 @@ Clean digital invoice                    Faded scan, two providers
   1 model call                             3 model calls, 5051 tokens
 ```
 
+**Served from its own endpoint** (`GET /api/documents/:id/pipeline`) rather than bundled into the document detail. It answers a different question — "what did the system do?" rather than "what does the document say?" — and only the pipeline view asks it. Measured: the trace was 2,351 bytes against 2,483 for the entire rest of the detail response, and the raw column was also riding along on *every row* of the document list. Both now exclude it at the query level, not just in serialization.
+
 **What was cut:** Live streaming of stages (above); per-stage retry counts; storing the trace for the *query* path (the pipeline story is about ingestion, and a query is one call).
 
 ---

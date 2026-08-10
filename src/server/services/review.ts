@@ -33,6 +33,9 @@ export async function getDocumentDetail(workspaceId: string, documentId: string)
       eq(documents.id, documentId),
       eq(documents.workspaceId, workspaceId),
     ),
+    // Available from GET /api/documents/:id/pipeline when the user opens the
+    // pipeline view; most reviews never need it.
+    columns: { pipeline: false },
   });
   if (!doc) return null;
 
@@ -50,15 +53,29 @@ export async function getDocumentDetail(workspaceId: string, documentId: string)
     }),
   ]);
 
-  return {
-    document: doc,
-    extraction,
-    lineItems: items,
-    auditLog: history,
-    // Nodes + edges, with every stage present (unrun ones as "pending"), so
-    // the UI draws the same graph shape regardless of which path executed.
-    pipeline: buildPipelineView(doc.pipeline),
-  };
+  return { document: doc, extraction, lineItems: items, auditLog: history };
+}
+
+/**
+ * The ingestion pipeline as a renderable graph. Separate from the document
+ * detail because it answers a different question ("what did the system do?"
+ * rather than "what does it say?") and only the pipeline view asks it.
+ */
+export async function getDocumentPipeline(
+  workspaceId: string,
+  documentId: string,
+) {
+  const doc = await db.query.documents.findFirst({
+    where: and(
+      eq(documents.id, documentId),
+      eq(documents.workspaceId, workspaceId),
+    ),
+    columns: { pipeline: true, status: true },
+  });
+  if (!doc) return null;
+  // Nodes + edges, with every stage present (unrun ones as "pending"), so
+  // the UI draws the same graph shape regardless of which path executed.
+  return { status: doc.status, ...buildPipelineView(doc.pipeline) };
 }
 
 /**

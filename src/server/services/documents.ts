@@ -101,6 +101,10 @@ export function listDocuments(workspaceId: string) {
   return db.query.documents.findMany({
     where: eq(documents.workspaceId, workspaceId),
     orderBy: [desc(documents.createdAt)],
+    // The pipeline trace is a per-document diagnostic view, fetched on
+    // demand from its own endpoint — shipping one per row would dominate
+    // this response for no benefit.
+    columns: { pipeline: false },
   });
 }
 
