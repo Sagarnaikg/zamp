@@ -1,0 +1,1 @@
+ALTER TABLE "documents" ADD COLUMN "pipeline" jsonb DEFAULT '[]'::jsonb NOT NULL;

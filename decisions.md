@@ -379,6 +379,36 @@ Cropping made it *worse* at every size, and produced identical values every time
 
 ---
 
-## 23. Deliberately not yet decided
+## 23. Pipeline trace: make the architecture visible — [LOCKED]
+
+**Decision:** Ingestion records what it actually did, stage by stage, and stores it on the document. Each stage carries a status (`ok` / `skipped` / `failed`), a plain-English detail line, a duration, and — where a model was called — the provider, model ID, and token cost. The document detail endpoint returns the trace alongside `PIPELINE_STAGES`, the canonical ordered list, so a UI can draw the whole pipeline and grey out what didn't run rather than only showing what happened to execute.
+
+**Reasoning:** Every interesting decision this system makes is currently invisible. A user watching "Processing…" has no idea that two different providers read their document, that the second reading was skipped because the arithmetic already reconciled, or that a third focused re-read overruled the first one. Those decisions *are* the product — the whole thesis is that trustworthy extraction means showing your work, and until now we showed it per-field but not per-pipeline. Recording it also gives real observability: a failed document now carries the stages that succeeded before the failure, so it's diagnosable after the fact instead of just "failed".
+
+A **skipped** stage is deliberately kept in the trace with its reason, not omitted. "We chose not to spend a model call here, because…" is more informative than silence, and it's the honest way to present the cost optimization from §21.
+
+**Alternatives considered:** Server-sent events streaming stage updates live (better UX — a graph that fills in as it runs — but needs a streaming route and client reconnect handling; the stored trace is the prerequisite either way, so this is a clean later upgrade); structured logs only (invisible to users, and the point is to show them); a generic OpenTelemetry span tree (right answer at scale, far too much apparatus for nine stages, and its output isn't user-presentable).
+
+**Two real traces, unmodified:**
+
+```
+Clean digital invoice                    Faded scan, two providers
+  ok      Store original                   ok      Store original
+  ok      Detect document type             ok      Detect document type
+  ok      First reading   891 tok          ok      First reading    3065 tok  [google/gemini-flash-latest]
+  ok      Validate                         ok      Validate
+  skipped Second reading  ← saved a call   ok      Second reading   1160 tok  [openai/gpt-5.4-mini]
+  skipped Compare readings                 ok      Compare readings  → disagree on: doc_date
+  skipped Focused re-read                  ok      Focused re-read   826 tok  → corrected doc_date
+  ok      Duplicate check                  ok      Duplicate check
+  ok      Score confidence                 ok      Score confidence  → 1 field flagged
+  1 model call                             3 model calls, 5051 tokens
+```
+
+**What was cut:** Live streaming of stages (above); per-stage retry counts; storing the trace for the *query* path (the pipeline story is about ingestion, and a query is one call).
+
+---
+
+## 24. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.

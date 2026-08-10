@@ -23,6 +23,18 @@ export const fileKind = pgEnum("file_kind", [
   "image",
 ]);
 
+/** One recorded step of the ingestion pipeline (see server/ingest/trace.ts). */
+export type PipelineStage = {
+  key: string;
+  label: string;
+  status: "ok" | "skipped" | "failed";
+  detail: string;
+  durationMs: number;
+  provider?: string;
+  model?: string;
+  usage?: { input: number; output: number; total: number; calls: number };
+};
+
 export const documents = pgTable("documents", {
   id: uuid("id").primaryKey().defaultRandom(),
   workspaceId: text("workspace_id").notNull(),
@@ -34,6 +46,8 @@ export const documents = pgTable("documents", {
   storagePath: text("storage_path").notNull(),
   status: documentStatus("status").notNull().default("processing"),
   error: text("error"),
+  /** What ingestion actually did, stage by stage — surfaced in the UI. */
+  pipeline: jsonb("pipeline").$type<PipelineStage[]>().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
