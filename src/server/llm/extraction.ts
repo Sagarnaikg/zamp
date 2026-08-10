@@ -77,6 +77,28 @@ function normalized(result: Extraction): Extraction {
   };
 }
 
+/**
+ * Build a provider-appropriate attachment block. LangChain's unified message
+ * format leaks here: @langchain/google-genai gates standard `file` blocks
+ * behind a naive model-name prefix check (`startsWith("gemini-2")` etc.),
+ * which rejects Google's own `-latest` aliases even though they are fully
+ * multimodal. Its `media` block reaches the same `inlineData` payload
+ * without that check. Isolated in one place so the workaround stays
+ * contained and provider-agnostic callers stay clean.
+ */
+function fileBlock(provider: Provider, data: Buffer, mimeType: string) {
+  const base64 = data.toString("base64");
+  if (provider === "google") {
+    return { type: "media", mimeType, data: base64 };
+  }
+  return {
+    type: "file",
+    source_type: "base64",
+    mime_type: mimeType,
+    data: base64,
+  };
+}
+
 /** Extract from a digital PDF's text layer (cheap text model). */
 export async function extractFromText(
   text: string,
@@ -86,7 +108,6 @@ export async function extractFromText(
     opts?.secondOpinion ? "second_opinion" : "extract_text",
     opts?.avoid,
   );
-  if (!routed) return null;
   const structured = routed.model.withStructuredOutput(extractionSchema, {
     name: "document_extraction",
   });
@@ -106,7 +127,6 @@ export async function extractFromFile(
     opts?.secondOpinion ? "second_opinion" : "extract_vision",
     opts?.avoid,
   );
-  if (!routed) return null;
   const structured = routed.model.withStructuredOutput(extractionSchema, {
     name: "document_extraction",
   });
@@ -114,12 +134,7 @@ export async function extractFromFile(
     new HumanMessage({
       content: [
         { type: "text", text: PROMPT },
-        {
-          type: "file",
-          source_type: "base64",
-          mime_type: mimeType,
-          data: data.toString("base64"),
-        },
+        fileBlock(routed.provider, data, mimeType),
       ],
     }),
   ]);
@@ -132,7 +147,11 @@ export async function extract(
   file: { data: Buffer; mimeType: string; text?: string },
   opts?: { avoid?: Provider; secondOpinion?: boolean },
 ) {
-  if (kind === "digital_pdf" && file.text) {
+  // Second opinions always read the document visually. For digital PDFs the
+  // primary read the text layer, so the reviewer sees a different
+  // representation of the same document — decorrelating errors even when
+  // both readings come from the same provider (decisions.md §8).
+  if (kind === "digital_pdf" && file.text && !opts?.secondOpinion) {
     return extractFromText(file.text, opts);
   }
   return extractFromFile(file.data, file.mimeType, opts);

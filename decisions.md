@@ -89,9 +89,15 @@ Status markers: **[LOCKED]** = confirmed, building against it. **[OPEN]** = stil
 | Second-opinion extraction (agreement signal) | Different provider than primary | OpenAI small multimodal (more quota than Claude) |
 | NL query → filter translation | Cheap, fast text model | Gemini flash-tier |
 
-Single-key mode: the table collapses to that one provider — e.g. only a Gemini key present means every task runs on Gemini models, tiered cheap vs. strong within that provider — and the second-opinion row switches off (confidence falls back to the arithmetic, format, and duplicate signals). Claude serves as fallback provider when present.
+Single-key mode: the table collapses to that one provider — e.g. only a Gemini key present means every task runs on Gemini models, tiered cheap vs. strong within that provider. Claude serves as fallback provider when present.
 
-**Honest caveat:** the cheap-vs-strong cost split is thinner here than in a bigger app — most of these tasks genuinely fit cheap models. The routing earns its place through the provider-diversity requirement of the agreement signal and the file-type-aware vision/text split, more than through cost savings.
+**Honest caveat:** the cheap-vs-strong cost split is thinner here than in a bigger app — most of these tasks genuinely fit cheap models. The routing earns its place through the independence requirement of the agreement signal and the file-type-aware vision/text split, more than through cost savings.
+
+**Update (same day): the second reading no longer requires a second provider.** Originally the agreement signal switched off entirely in single-key mode, which made the product's headline feature depend on a reviewer having three API keys — bad for the graded setup experience. It now always runs, and independence is obtained from whatever the environment offers, in priority order: a **different provider** when a second key exists (most independent), else the **same provider with a different model tier _and_ a different input modality** — for a digital PDF the primary reads the extracted text layer while the reviewer reads the PDF visually. Two different pipelines over two different representations of the document, which is the point: a plain re-run of the same model on the same input mostly reproduces its own mistakes (errors are correlated), whereas a text-layer read and a vision read fail in different ways. Analogy that drove the change: two reviewers who read the same document differently, not one person reading twice.
+
+*Accepted tradeoff:* same-provider agreement is weaker evidence than cross-provider agreement — shared training data means some blind spots persist. Multi-key setups still get the stronger version automatically, and the signal is one of four, never the sole basis for trusting a field.
+
+*Bug this surfaced (worth recording):* wiring this up exposed that the vision path had **never worked** — `@langchain/google-genai` gates file attachments behind a naive model-name check (`model.startsWith("gemini-2")`, `"gemini-3"`, …) that rejects Google's own `-latest` aliases, throwing "This model does not support files". Every scan/photo upload would have failed; only digital PDFs (text path) worked, which is all our early samples exercised. Fixed by emitting a provider-appropriate attachment block — Gemini's `media` block reaches the identical `inlineData` payload without the check — isolated in one `fileBlock()` helper so the leak in LangChain's "unified interface" stays contained. Added a photo-style receipt sample so the vision path is covered by the demo set from now on.
 
 ---
 
@@ -114,7 +120,7 @@ Single-key mode: the table collapses to that one provider — e.g. only a Gemini
 **Signals:**
 - *Arithmetic consistency:* line items must sum to subtotal; subtotal + tax must equal total. Passing math is strong, verifiable evidence extraction is right; failing math localizes which field is suspect.
 - *Format/plausibility validation:* dates parse and aren't in the future, currency codes exist, totals aren't negative.
-- *Cross-model agreement:* run extraction on two models from different providers and compare field-by-field; agreement raises confidence, disagreement flags the field. This gives the multi-model routing a functional reason to exist beyond cost.
+- *Independent-reading agreement:* read the document twice and compare field-by-field — a second reviewer checking the first one's work. Agreement raises confidence; disagreement flags the field and shows both readings. See the update in §6 for how the second reading is made independent without requiring a second API key.
 - *Duplicate detection:* compare each incoming document against history on vendor + invoice number + amount + date (exact match for identical resubmissions, fuzzy match for near-misses) and flag suspected duplicates before they enter the dataset (e.g. "looks like a duplicate of INV-4021 uploaded Tuesday").
 
 Suspect fields are shown with a human-readable reason (e.g. "line items sum to 847 but total reads 874 — possible digit swap"), and fixing one is a click and a keystroke.

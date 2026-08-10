@@ -45,6 +45,16 @@ describe("agreementSignal", () => {
     expect(totalFindings[0].reason).toContain("863");
   });
 
+  it("compares category so a misclassification is caught, not silently trusted", () => {
+    const findings = agreementSignal(
+      extraction(),
+      extraction({ category: "meals" }),
+    );
+    const categoryFindings = findings.filter((f) => f.field === "category");
+    expect(categoryFindings).toHaveLength(1);
+    expect(categoryFindings[0].kind).toBe("suspect");
+  });
+
   it("stays silent on fields only one model produced", () => {
     const second = extraction({ tax: null });
     const findings = agreementSignal(extraction(), second);

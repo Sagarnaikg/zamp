@@ -57,11 +57,14 @@ export interface RoutedModel {
 }
 
 /**
- * Pick a model for a task. `avoid` lets the second-opinion task request a
- * different provider than the primary extraction used; if only one provider
- * is configured, this returns null and the agreement signal switches off.
+ * Pick a model for a task. `avoid` lets the second-opinion task prefer a
+ * different provider than the primary extraction used (most independent
+ * errors). With a single configured provider, the reviewer stays on that
+ * provider but the caller decorrelates the reading another way: a different
+ * model tier here, and a different input modality in `extract()` —
+ * mimicking a second human reviewer rather than a second read-through.
  */
-export function route(task: Task, avoid?: Provider): RoutedModel | null {
+export function route(task: Task, avoid?: Provider): RoutedModel {
   const providers = availableProviders();
   if (providers.length === 0) {
     throw new Error(
@@ -74,14 +77,15 @@ export function route(task: Task, avoid?: Provider): RoutedModel | null {
   let candidates = providers;
   if (avoid) {
     candidates = providers.filter((p) => p !== avoid);
-    if (task === "second_opinion" && candidates.length === 0) {
-      return null;
-    }
     if (candidates.length === 0) candidates = providers;
   }
 
   const provider = candidates[0];
-  const tier = task === "extract_vision" ? "strong" : "cheap";
+  // Second opinions read the document visually with the strong tier — for a
+  // same-provider review of a digital PDF this flips both the model AND the
+  // modality relative to the primary (cheap tier + text layer).
+  const tier =
+    task === "extract_vision" || task === "second_opinion" ? "strong" : "cheap";
   const modelId = MODELS[provider][tier];
   return { provider, modelId, model: makeModel(provider, modelId) };
 }

@@ -35,7 +35,12 @@ async function duplicateCandidates(
   return rows;
 }
 
-/** Second extraction on a different provider; absence is fine (single-key mode). */
+/**
+ * Independent second reading for the agreement signal — a different
+ * provider when one is configured, else the same provider on a different
+ * model tier and input modality (decisions.md §8). Always attempted;
+ * a failure degrades to the remaining signals rather than failing ingestion.
+ */
 async function secondOpinion(
   kind: Awaited<ReturnType<typeof detectFileKind>>["kind"],
   file: { data: Buffer; mimeType: string; text?: string },
@@ -48,8 +53,6 @@ async function secondOpinion(
     });
     return result?.extraction ?? null;
   } catch {
-    // A failed second opinion degrades to the remaining signals rather than
-    // failing ingestion (decisions.md §8).
     return null;
   }
 }

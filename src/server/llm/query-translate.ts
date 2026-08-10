@@ -73,7 +73,6 @@ export async function translateQuery(
   opts?: { today?: Date; extraKeys?: string[] },
 ): Promise<QueryDsl> {
   const routed = route("query_translate");
-  if (!routed) throw new Error("No LLM provider configured");
   const structured = routed.model.withStructuredOutput(queryDslSchema, {
     name: "ledger_query",
   });

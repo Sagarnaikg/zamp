@@ -1,10 +1,15 @@
 import { type Extraction, type Finding, toCents } from "./types";
 
 /**
- * Cross-model agreement (decisions.md §8): two models from different
- * providers reading the same document. Where they agree, confidence rises;
- * where they disagree, the user sees both readings. Only runs when a second
- * provider key is configured — with one key this signal is simply absent.
+ * Independent-reading agreement (decisions.md §8): the document is read
+ * twice and the results compared field-by-field — like a second human
+ * reviewer checking the first one's work. The second reading is made as
+ * independent as the configured keys allow: a different provider when one
+ * is available, otherwise the same provider with a different model tier
+ * AND a different input modality (vision vs text layer for digital PDFs),
+ * so the two readings don't share a single pipeline's blind spots. Where
+ * they agree, confidence rises; where they disagree, the user sees both
+ * readings.
  */
 
 function normText(value: string | null): string | null {
@@ -33,7 +38,7 @@ export function agreementSignal(
       findings.push({
         field,
         kind: "suspect",
-        reason: `Two models disagree: one read ${display(a)}, the other ${display(b)}`,
+        reason: `Two independent readings disagree: one read ${display(a)}, the other ${display(b)}`,
       });
     }
   };
@@ -62,6 +67,7 @@ export function agreementSignal(
   compare("total", toCents(primary.total), toCents(second.total), () =>
     `${primary.total} vs ${second.total}`,
   );
+  compare("category", primary.category, second.category);
 
   return findings;
 }
