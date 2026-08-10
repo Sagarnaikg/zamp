@@ -250,7 +250,11 @@ Suspect fields are shown with a human-readable reason (e.g. "line items sum to 8
 
 **Reasoning:** The fixed schema answers "what can I query?"; the capture net answers "did I lose anything?" — the two concerns pull in different directions, and one mechanism can't serve both well. This split gives a hard guarantee for each: nothing legible is dropped, and everything queryable is typed.
 
-**What was cut:** NL-query filtering over extra fields (would need JSON-path operators in the query DSL — a clean future extension, noted rather than built).
+**What was cut:** Nothing further — the two gaps initially noted (inconsistent keys across vendors, no querying over extras) were closed the same day; see the update below.
+
+**Update (same day): key normalization + JSONB querying.** Two additions after review:
+- *Field-key normalization:* vendors label the same concept differently ("PO No" / "Purchase Order Number" / "P.O. #"). Extra fields now carry a canonical `key` (po_number) alongside the printed `label`. Two layers: the LLM proposes a snake_case key (models are good at semantics), then a deterministic alias table in `ingest/normalize.ts` settles spelling variants (code is good at consistency). Genuinely distinct concepts (GSTIN vs VAT number vs generic tax ID) are deliberately never merged. Unit-tested (7 cases).
+- *Querying extras:* the query DSL gained field `extra` (with `key`) and op `exists`. The translator prompt is grounded with the distinct keys actually present in the workspace's ledger, so the model can't invent keys. The query builder maps extra filters onto parameterized JSONB conditions (`jsonb_array_elements` + `EXISTS`); fixed-column queries never touch JSONB, so the fast path stays fast — the JSONB cost is paid only by questions that actually reference an extra field. `gte`/`lte` over extras is deliberately unsupported (string comparison over free text would give silently wrong answers); unsupported filters are reported back as `ignoredFilters`, and the interpretation string is built only from filters that actually ran.
 
 ---
 

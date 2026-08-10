@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { HumanMessage } from "@langchain/core/messages";
 import { route, type Provider } from "./router";
+import { normalizeExtraFields } from "@/server/ingest/normalize";
 import type { FileKind } from "@/server/ingest/detect";
 
 export const CATEGORIES = [
@@ -42,7 +43,12 @@ export const extractionSchema = z.object({
   extra_fields: z
     .array(
       z.object({
-        label: z.string().describe("The field's label as printed, e.g. 'PO Number'"),
+        key: z
+          .string()
+          .describe(
+            "Normalized snake_case identifier for the concept, e.g. po_number, due_date, payment_terms, gstin — the same concept must always get the same key regardless of how the document labels it",
+          ),
+        label: z.string().describe("The field's label as printed, e.g. 'PO No.'"),
         value: z.string().describe("The field's value as printed"),
       }),
     )
@@ -61,7 +67,15 @@ Rules:
 - doc_date must be YYYY-MM-DD. If the date format is ambiguous (e.g. 03/04/2025), use surrounding context (written month names, due dates, locale hints) to disambiguate; if still ambiguous, pick the more likely reading.
 - currency: infer from symbols/context (₹ → INR, $ → USD unless context says otherwise, € → EUR).
 - category: pick the closest match for what was purchased.
-- extra_fields: capture ALL other labeled data on the document (PO numbers, due dates, payment terms, tax IDs, addresses, reference numbers). Nothing legible should be lost — if it has a label and a value, include it.`;
+- extra_fields: capture ALL other labeled data on the document (PO numbers, due dates, payment terms, tax IDs, addresses, reference numbers). Nothing legible should be lost — if it has a label and a value, include it. Give each a normalized snake_case key: the same concept always gets the same key ("PO No" and "Purchase Order Number" are both po_number).`;
+
+/** Post-process one model output: canonicalize extra-field keys. */
+function normalized(result: Extraction): Extraction {
+  return {
+    ...result,
+    extra_fields: normalizeExtraFields(result.extra_fields),
+  };
+}
 
 /** Extract from a digital PDF's text layer (cheap text model). */
 export async function extractFromText(
@@ -79,7 +93,7 @@ export async function extractFromText(
   const result = await structured.invoke([
     new HumanMessage(`${PROMPT}\n\nDocument text:\n\n${text}`),
   ]);
-  return { extraction: result as Extraction, provider: routed.provider, modelId: routed.modelId };
+  return { extraction: normalized(result as Extraction), provider: routed.provider, modelId: routed.modelId };
 }
 
 /** Extract from a scanned PDF or image (strong vision model). */
@@ -109,7 +123,7 @@ export async function extractFromFile(
       ],
     }),
   ]);
-  return { extraction: result as Extraction, provider: routed.provider, modelId: routed.modelId };
+  return { extraction: normalized(result as Extraction), provider: routed.provider, modelId: routed.modelId };
 }
 
 /** Route to the right extraction path for a detected file kind. */

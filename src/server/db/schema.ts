@@ -54,9 +54,11 @@ export type FieldMeta = Record<
 /**
  * Capture net for document data outside the fixed schema (PO numbers, due
  * dates, payment terms, tax IDs, ...). Guarantees no silent data loss at
- * ingestion; these are displayed but not filterable/summable in the ledger.
+ * ingestion. `key` is the normalized canonical name (po_number), `label`
+ * the text as printed on the document (PO No.) — key for querying, label
+ * for display.
  */
-export type ExtraField = { label: string; value: string };
+export type ExtraField = { key: string; label: string; value: string };
 
 export const extractions = pgTable("extractions", {
   id: uuid("id").primaryKey().defaultRandom(),

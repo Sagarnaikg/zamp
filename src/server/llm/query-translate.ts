@@ -6,7 +6,9 @@ import { CATEGORIES } from "./extraction";
 /**
  * NL → constrained filter DSL (decisions.md §8). The model never writes SQL;
  * it fills an allow-listed structure, and the query builder maps that onto
- * typed columns. Unpredictable/unsafe queries are structurally impossible.
+ * typed columns — or, for field "extra", onto parameterized JSONB conditions
+ * over the extra-fields capture net (decisions.md §17). Unpredictable/unsafe
+ * queries are structurally impossible.
  */
 
 export const filterSchema = z.object({
@@ -17,9 +19,18 @@ export const filterSchema = z.object({
     "invoice_number",
     "doc_date",
     "total",
+    "extra",
   ]),
-  op: z.enum(["eq", "contains", "gte", "lte"]),
-  value: z.string(),
+  key: z
+    .string()
+    .nullable()
+    .describe(
+      "Only when field is 'extra': the normalized key of the extra field, e.g. po_number, due_date, payment_terms",
+    ),
+  op: z
+    .enum(["eq", "contains", "gte", "lte", "exists"])
+    .describe("exists = the field is present, any value; only for field 'extra'"),
+  value: z.string().describe("Empty string when op is exists"),
 });
 
 export const queryDslSchema = z.object({
@@ -34,7 +45,12 @@ export const queryDslSchema = z.object({
 export type QueryFilter = z.infer<typeof filterSchema>;
 export type QueryDsl = z.infer<typeof queryDslSchema>;
 
-function prompt(question: string, today: string): string {
+function prompt(question: string, today: string, extraKeys: string[]): string {
+  const extras =
+    extraKeys.length > 0
+      ? `- Documents also carry extra fields with these keys: ${extraKeys.join(", ")}. To filter on one, use field "extra" with the key set — op "exists" (is the field present), "eq" or "contains" (match its value). Never invent keys not in this list.`
+      : `- No extra fields exist in this ledger yet — use only the named fields.`;
+
   return `Translate this question about a ledger of invoices/receipts/expenses into filters.
 
 Today's date: ${today}
@@ -44,15 +60,17 @@ Rules:
 - Vendor names use op "contains" (users rarely type the exact registered name).
 - category must be one of: ${CATEGORIES.join(", ")}. Map synonyms (e.g. "SaaS" → software, "food" → meals).
 - Amount conditions ("over $500") are total filters with gte/lte, plain numbers.
+${extras}
 - "how much" means sum_total; "how many" means count; "average" means avg_total; otherwise none.
 - Only add filters the question actually implies. An unfilterable question gets no filters.
+- key must be null unless field is "extra".
 
 Question: ${question}`;
 }
 
 export async function translateQuery(
   question: string,
-  today: Date = new Date(),
+  opts?: { today?: Date; extraKeys?: string[] },
 ): Promise<QueryDsl> {
   const routed = route("query_translate");
   if (!routed) throw new Error("No LLM provider configured");
@@ -60,17 +78,26 @@ export async function translateQuery(
     name: "ledger_query",
   });
   const result = await structured.invoke([
-    new HumanMessage(prompt(question, today.toISOString().slice(0, 10))),
+    new HumanMessage(
+      prompt(
+        question,
+        (opts?.today ?? new Date()).toISOString().slice(0, 10),
+        opts?.extraKeys ?? [],
+      ),
+    ),
   ]);
   return result as QueryDsl;
 }
 
 /**
- * Human-readable rendering of what the query will actually do — derived
- * from the DSL, not from the model, so it can't misrepresent the query
- * (decisions.md §5: the interpretation shown must be verifiable).
+ * Human-readable rendering of what the query actually did — derived from
+ * the filters that were APPLIED, not from the model's own words, so it
+ * can't misrepresent the executed query (decisions.md §5).
  */
-export function describeQuery(dsl: QueryDsl): string {
+export function describeQuery(
+  aggregate: QueryDsl["aggregate"],
+  appliedFilters: QueryFilter[],
+): string {
   const parts: string[] = [];
   const AGG: Record<QueryDsl["aggregate"], string> = {
     sum_total: "sum of totals",
@@ -78,15 +105,22 @@ export function describeQuery(dsl: QueryDsl): string {
     avg_total: "average total",
     none: "matching documents",
   };
-  parts.push(AGG[dsl.aggregate]);
+  parts.push(AGG[aggregate]);
   const OPS: Record<QueryFilter["op"], string> = {
     eq: "is",
     contains: "contains",
     gte: "≥",
     lte: "≤",
+    exists: "is present",
   };
-  for (const f of dsl.filters) {
-    parts.push(`${f.field.replace("_", " ")} ${OPS[f.op]} "${f.value}"`);
+  for (const f of appliedFilters) {
+    const name =
+      f.field === "extra" ? (f.key ?? "extra") : f.field.replace("_", " ");
+    parts.push(
+      f.op === "exists"
+        ? `${name} ${OPS.exists}`
+        : `${name} ${OPS[f.op]} "${f.value}"`,
+    );
   }
   return parts.join(" · ");
 }
