@@ -240,6 +240,20 @@ Suspect fields are shown with a human-readable reason (e.g. "line items sum to 8
 
 ---
 
-## 17. Deliberately not yet decided
+## 17. Extraction completeness: fixed schema + extra-fields capture net — [LOCKED]
+
+**Decision:** Two-tier extraction. The fixed schema (vendor, date, amounts, category, line items) stays as real typed columns — the queryable spine. Alongside it, the LLM now returns `extra_fields`: every *other* clearly labeled field on the document (PO number, due date, payment terms, tax IDs, billing address...), stored as JSONB on the extraction. Extra fields are displayed in review and the ledger but are not filterable/summable.
+
+**Alternatives considered:**
+- Fixed schema only (initial state). Rejected after discussion: anything outside the schema was silently dropped at ingestion — the worst kind of data loss, because the user can't know what they lost.
+- Fully dynamic schema (everything in JSON, no fixed columns). Rejected: the ledger's filter/sum/group queries and the arithmetic confidence checks depend on typed columns; JSON-path queries would make every aggregation slower and fragile, which is the same reasoning that picked Postgres over a document store (§11).
+
+**Reasoning:** The fixed schema answers "what can I query?"; the capture net answers "did I lose anything?" — the two concerns pull in different directions, and one mechanism can't serve both well. This split gives a hard guarantee for each: nothing legible is dropped, and everything queryable is typed.
+
+**What was cut:** NL-query filtering over extra fields (would need JSON-path operators in the query DSL — a clean future extension, noted rather than built).
+
+---
+
+## 18. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.

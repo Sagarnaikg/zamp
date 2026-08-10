@@ -25,6 +25,7 @@ const ledgerColumns = {
   tax: extractions.tax,
   total: extractions.total,
   category: extractions.category,
+  extraFields: extractions.extraFields,
 };
 
 function baseCondition(workspaceId: string): SQL {

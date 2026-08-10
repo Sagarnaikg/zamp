@@ -1,0 +1,1 @@
+ALTER TABLE "extractions" ADD COLUMN "extra_fields" jsonb DEFAULT '[]'::jsonb NOT NULL;

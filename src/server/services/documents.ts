@@ -125,6 +125,7 @@ export async function ingestDocument(
       tax: extraction.tax?.toString() ?? null,
       total: extraction.total?.toString() ?? null,
       category: extraction.category,
+      extraFields: extraction.extra_fields,
       fieldMeta: confidence.fieldMeta,
     });
 

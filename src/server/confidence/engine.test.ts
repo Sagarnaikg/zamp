@@ -19,6 +19,7 @@ function extraction(overrides: Partial<Extraction> = {}): Extraction {
       { description: "Storage", quantity: 2, unit_price: 95, amount: 190 },
       { description: "Support", quantity: 1, unit_price: 150, amount: 150 },
     ],
+    extra_fields: [],
     ...overrides,
   };
 }

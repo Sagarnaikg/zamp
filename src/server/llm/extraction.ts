@@ -39,6 +39,16 @@ export const extractionSchema = z.object({
   total: z.number().nullable().describe("Final amount payable"),
   category: z.enum(CATEGORIES).nullable(),
   line_items: z.array(lineItemSchema),
+  extra_fields: z
+    .array(
+      z.object({
+        label: z.string().describe("The field's label as printed, e.g. 'PO Number'"),
+        value: z.string().describe("The field's value as printed"),
+      }),
+    )
+    .describe(
+      "Every other clearly labeled field on the document not covered by the fields above — e.g. PO number, due date, payment terms, tax/VAT ID, billing address, account numbers. Empty array if none.",
+    ),
 });
 
 export type Extraction = z.infer<typeof extractionSchema>;
@@ -50,7 +60,8 @@ Rules:
 - Copy numbers exactly as printed, even if the document's own arithmetic looks wrong. Do not "fix" totals.
 - doc_date must be YYYY-MM-DD. If the date format is ambiguous (e.g. 03/04/2025), use surrounding context (written month names, due dates, locale hints) to disambiguate; if still ambiguous, pick the more likely reading.
 - currency: infer from symbols/context (₹ → INR, $ → USD unless context says otherwise, € → EUR).
-- category: pick the closest match for what was purchased.`;
+- category: pick the closest match for what was purchased.
+- extra_fields: capture ALL other labeled data on the document (PO numbers, due dates, payment terms, tax IDs, addresses, reference numbers). Nothing legible should be lost — if it has a label and a value, include it.`;
 
 /** Extract from a digital PDF's text layer (cheap text model). */
 export async function extractFromText(

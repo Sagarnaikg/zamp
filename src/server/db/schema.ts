@@ -51,6 +51,13 @@ export type FieldMeta = Record<
   { confidence: number; reasons: string[] }
 >;
 
+/**
+ * Capture net for document data outside the fixed schema (PO numbers, due
+ * dates, payment terms, tax IDs, ...). Guarantees no silent data loss at
+ * ingestion; these are displayed but not filterable/summable in the ledger.
+ */
+export type ExtraField = { label: string; value: string };
+
 export const extractions = pgTable("extractions", {
   id: uuid("id").primaryKey().defaultRandom(),
   documentId: uuid("document_id")
@@ -66,6 +73,10 @@ export const extractions = pgTable("extractions", {
   tax: numeric("tax", { precision: 14, scale: 2 }),
   total: numeric("total", { precision: 14, scale: 2 }),
   category: text("category"),
+  extraFields: jsonb("extra_fields")
+    .$type<ExtraField[]>()
+    .notNull()
+    .default([]),
   fieldMeta: jsonb("field_meta").$type<FieldMeta>().notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

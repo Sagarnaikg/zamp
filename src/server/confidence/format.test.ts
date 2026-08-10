@@ -15,6 +15,7 @@ function extraction(overrides: Partial<Extraction> = {}): Extraction {
     total: 110,
     category: "software",
     line_items: [],
+    extra_fields: [],
     ...overrides,
   };
 }
