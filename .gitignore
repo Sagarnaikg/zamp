@@ -45,3 +45,7 @@ uploads/
 
 # local agent settings
 .claude/
+
+# Next.js regenerates these agent-instruction stubs on dev start
+AGENTS.md
+CLAUDE.md
