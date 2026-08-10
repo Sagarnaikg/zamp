@@ -67,4 +67,40 @@ describe("normalizeExtraFields", () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({ key: "po_number", label: "PO No", value: "A-1" });
   });
+
+  it("prevents the same concept from fragmenting into different keys across vendors", () => {
+    // Two separate documents, two separate LLM extraction calls, two vendors
+    // who print the exact same concept with different labels — this is the
+    // scenario the alias table exists to solve. Without it, the ledger would
+    // end up with both "po_no" and "purchase_order_number" as distinct keys,
+    // and a query for one would silently miss documents using the other.
+    const invoiceFromVendorX = normalizeExtraFields([
+      { key: "po_no", label: "PO No:", value: "4500012" },
+    ]);
+    const invoiceFromVendorY = normalizeExtraFields([
+      {
+        key: "purchase_order_number",
+        label: "Purchase Order Number:",
+        value: "4500099",
+      },
+    ]);
+
+    // Same canonical key on both, even though the model saw different text
+    // and (plausibly) proposed a different raw key each time.
+    expect(invoiceFromVendorX[0].key).toBe("po_number");
+    expect(invoiceFromVendorY[0].key).toBe("po_number");
+
+    // The original printed label is still preserved per-document for display.
+    expect(invoiceFromVendorX[0].label).toBe("PO No:");
+    expect(invoiceFromVendorY[0].label).toBe("Purchase Order Number:");
+
+    // A ledger scan across both documents' extra_fields therefore reports a
+    // single distinct key, not two — which is exactly what availableExtraKeys()
+    // needs to be true for the query translator to find every match.
+    const distinctKeysInLedger = new Set([
+      ...invoiceFromVendorX.map((f) => f.key),
+      ...invoiceFromVendorY.map((f) => f.key),
+    ]);
+    expect(distinctKeysInLedger.size).toBe(1);
+  });
 });
