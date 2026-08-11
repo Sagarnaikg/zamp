@@ -17,10 +17,10 @@ interface NavItem {
   enabled: boolean;
 }
 
+// Asking lives on the ledger itself (§5), so there is no separate nav entry.
 const NAV_ITEMS: NavItem[] = [
   { href: ROUTES.documents, label: "Documents", enabled: true },
   { href: ROUTES.ledger, label: "Ledger", enabled: true },
-  { href: ROUTES.query, label: "Ask", enabled: features.naturalLanguageQuery },
 ];
 
 /**

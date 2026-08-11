@@ -5,8 +5,8 @@ export const ROUTES = {
   document: (id: string) => `/documents/${id}`,
   review: (id: string) => `/documents/${id}/review`,
   pipeline: (id: string) => `/documents/${id}/pipeline`,
+  /** Asking is part of the ledger, not a route of its own (§5). */
   ledger: "/ledger",
-  query: "/query",
 } as const;
 
 /** Server endpoints, kept beside the page routes for the same reason. */

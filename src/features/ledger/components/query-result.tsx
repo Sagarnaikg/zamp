@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EMPTY_STATES } from "@/constants";
@@ -22,16 +23,28 @@ function formatAggregate(result: QueryResponse): string | null {
  * just the model's restatement of the question. That's what lets a user catch
  * a misinterpreted query instead of trusting a wrong answer.
  */
-export function QueryResult({ result }: { result: QueryResponse }) {
+export function QueryResult({
+  result,
+  onClear,
+}: {
+  result: QueryResponse;
+  /** Escape hatch back to the unfiltered ledger. */
+  onClear?: ReactNode;
+}) {
   const aggregateValue = formatAggregate(result);
 
   return (
     <div className="space-y-5">
       <Card className="p-6">
-        <p className="text-[13px] text-muted">Interpreted as</p>
-        <p className="mt-1.5 text-sm font-medium text-foreground">
-          {result.interpretation}
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[13px] text-muted">Interpreted as</p>
+            <p className="mt-1.5 text-sm font-medium text-foreground">
+              {result.interpretation}
+            </p>
+          </div>
+          {onClear}
+        </div>
         {aggregateValue !== null && (
           <p className="mt-4 text-3xl font-semibold tracking-tight text-foreground">
             {aggregateValue}
