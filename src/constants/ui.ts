@@ -1,4 +1,4 @@
-import { CONFIDENCE, DocumentStatus } from "@/server/constants";
+import { CONFIDENCE, DocumentStatus, StageViewStatus } from "@/server/constants";
 
 /** Visual weight of a confidence score — the product's core visual language. */
 export enum ConfidenceLevel {
@@ -56,6 +56,29 @@ export const STATUS_STYLES: Record<DocumentStatus, string> = {
   [DocumentStatus.Accepted]: "bg-confidence-strong/10 text-confidence-strong",
   [DocumentStatus.Failed]: "bg-danger/10 text-danger",
 };
+
+/**
+ * A skipped stage is a deliberate decision, not a failure (§21) — it reads as
+ * neutral information, never as a warning.
+ */
+export const STAGE_STATUS_LABELS: Record<StageViewStatus, string> = {
+  [StageViewStatus.Ok]: "Done",
+  [StageViewStatus.Skipped]: "Skipped",
+  [StageViewStatus.Failed]: "Failed",
+  [StageViewStatus.Pending]: "Waiting",
+};
+
+export const STAGE_STATUS_STYLES: Record<StageViewStatus, string> = {
+  [StageViewStatus.Ok]: "bg-confidence-strong/10 text-confidence-strong",
+  [StageViewStatus.Skipped]: "bg-surface-raised text-muted",
+  [StageViewStatus.Failed]: "bg-danger/10 text-danger",
+  [StageViewStatus.Pending]: "bg-surface-raised text-subtle",
+};
+
+export enum ReviewTab {
+  Values = "values",
+  Pipeline = "pipeline",
+}
 
 export enum ButtonVariant {
   Primary = "primary",

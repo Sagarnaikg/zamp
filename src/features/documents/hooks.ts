@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/api/query-keys";
 import { reportError } from "@/lib/observability/report-error";
-import type { CorrectableField } from "@/server/constants";
+import { DocumentStatus, type CorrectableField } from "@/server/constants";
 import { documentsApi } from "./api";
 
 /**
@@ -11,11 +11,35 @@ import { documentsApi } from "./api";
  * query client, cache keys, or the API module directly.
  */
 
+/**
+ * A document only moves on its own while it is being read, so polling is
+ * scoped to exactly that state — a finished document is immutable until the
+ * user changes it, and polling it forever would be pure waste.
+ *
+ * The poll deliberately continues while the tab is backgrounded. React Query
+ * pauses intervals on an unfocused page by default, and this app turns
+ * `refetchOnWindowFocus` off globally (§28) — together those would leave a
+ * user who tabbed away mid-ingestion staring at "Reading" forever. Processing
+ * lasts seconds, so the cost of polling through it is negligible.
+ */
+const PROCESSING_POLL_MS = 2_000;
+
+function pollWhileProcessing(status: string | undefined): number | false {
+  return status === DocumentStatus.Processing ? PROCESSING_POLL_MS : false;
+}
+
 export function useDocuments() {
   return useQuery({
     queryKey: queryKeys.documents.list(),
     queryFn: ({ signal }) => documentsApi.list(signal),
     select: (data) => data.documents,
+    refetchInterval: (query) =>
+      query.state.data?.documents.some(
+        (document) => document.status === DocumentStatus.Processing,
+      )
+        ? PROCESSING_POLL_MS
+        : false,
+    refetchIntervalInBackground: true,
   });
 }
 
@@ -24,6 +48,9 @@ export function useDocument(id: string) {
     queryKey: queryKeys.documents.detail(id),
     queryFn: ({ signal }) => documentsApi.detail(id, signal),
     enabled: id.length > 0,
+    refetchInterval: (query) =>
+      pollWhileProcessing(query.state.data?.document.status),
+    refetchIntervalInBackground: true,
   });
 }
 
@@ -32,6 +59,9 @@ export function useDocumentPipeline(id: string) {
     queryKey: queryKeys.documents.pipeline(id),
     queryFn: ({ signal }) => documentsApi.pipeline(id, signal),
     enabled: id.length > 0,
+    // The graph fills in stage by stage while ingestion runs.
+    refetchInterval: (query) => pollWhileProcessing(query.state.data?.status),
+    refetchIntervalInBackground: true,
   });
 }
 

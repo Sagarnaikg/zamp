@@ -35,6 +35,17 @@ export function formatText(value: string | null): string {
   return value && value.trim() !== "" ? value : EM_DASH;
 }
 
+/**
+ * Stage durations span three orders of magnitude — a disk write is sub-
+ * millisecond, a vision call is seconds — so the unit changes rather than
+ * printing "0.00 sec" or "3400 ms".
+ */
+export function formatDuration(ms: number): string {
+  if (ms < 1) return "<1 ms";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  return `${(ms / 1000).toFixed(1)} sec`;
+}
+
 /** "PO number" from "po_number" — extra-field keys are normalized snake_case. */
 export function humanizeKey(key: string): string {
   const spaced = key.replace(/_/g, " ");
