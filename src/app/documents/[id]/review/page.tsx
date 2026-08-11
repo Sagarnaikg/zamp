@@ -105,8 +105,10 @@ export default function ReviewPage() {
               <Button
                 loading={accept.isPending}
                 onClick={() =>
+                  // Accepting is what puts a document in the ledger, so that's
+                  // where it should land — the user gets to see it arrive.
                   accept.mutate(undefined, {
-                    onSuccess: () => router.push(ROUTES.documents),
+                    onSuccess: () => router.push(ROUTES.ledger),
                   })
                 }
               >
