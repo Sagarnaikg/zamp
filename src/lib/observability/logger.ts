@@ -21,10 +21,12 @@ function emit(level: LogLevel, message: string, context?: LogContext): void {
   // Debug noise is useful while building and pure cost in production.
   if (isProduction && level === LogLevel.Debug) return;
 
-  const payload = { level, message, ...context, at: new Date().toISOString() };
-  if (level === LogLevel.Error) console.error(payload);
-  else if (level === LogLevel.Warn) console.warn(payload);
-  else console.info(payload);
+  // The message goes first as a plain string: console UIs (and Next's dev
+  // overlay) show the first argument, and a bare object renders as "{}".
+  const payload = { level, ...context, at: new Date().toISOString() };
+  if (level === LogLevel.Error) console.error(message, payload);
+  else if (level === LogLevel.Warn) console.warn(message, payload);
+  else console.info(message, payload);
 }
 
 export const logger = {

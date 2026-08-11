@@ -50,7 +50,7 @@ export function ReviewForm({
     formState: { dirtyFields, isDirty },
   } = useForm<FormValues>({ defaultValues: toFormValues(extraction) });
 
-  const onSubmit = handleSubmit(async (values) => {
+  const onSubmit = handleSubmit((values) => {
     const changed: Partial<Record<CorrectableField, string | null>> = {};
     for (const field of Object.keys(dirtyFields) as CorrectableField[]) {
       const value = values[field].trim();
@@ -58,9 +58,13 @@ export function ReviewForm({
     }
     if (Object.keys(changed).length === 0) return;
 
-    const result = await correct.mutateAsync(changed);
-    // Re-baseline so the freshly saved values are no longer "dirty".
-    reset(toFormValues(result.extraction));
+    // mutate, not mutateAsync: react-hook-form re-throws whatever the submit
+    // handler rejects with, which would surface as an unhandled rejection
+    // rather than the inline message below.
+    correct.mutate(changed, {
+      // Re-baseline so the freshly saved values are no longer "dirty".
+      onSuccess: (result) => reset(toFormValues(result.extraction)),
+    });
   });
 
   return (

@@ -2,13 +2,21 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { FileText, ListChecks } from "lucide-react";
+import { DocumentStatus } from "@/server/constants";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ACTIONS, ButtonVariant, ROUTES } from "@/constants";
+import {
+  ACTIONS,
+  ButtonVariant,
+  ROUTES,
+  STATUS_LABELS,
+  STATUS_STYLES,
+} from "@/constants";
+import { cn } from "@/lib/utils/cn";
 import {
   useAcceptDocument,
   useDocument,
@@ -54,6 +62,13 @@ export default function ReviewPage() {
   }
 
   const { document, extraction, lineItems, auditLog } = data;
+  const status = document.status as DocumentStatus;
+
+  // Accepting is only legal from needs_review (§9) — offering the button
+  // otherwise guarantees a 409 the user can do nothing about.
+  const canAccept = status === DocumentStatus.NeedsReview;
+  const canReject = status !== DocumentStatus.Processing;
+  const actionError = accept.error ?? reject.error;
 
   return (
     <>
@@ -63,28 +78,55 @@ export default function ReviewPage() {
         subtitle={document.filename}
         actions={
           <>
-            <Button
-              variant={ButtonVariant.Secondary}
-              loading={reject.isPending}
-              onClick={async () => {
-                await reject.mutateAsync();
-                router.push(ROUTES.documents);
-              }}
+            <span
+              className={cn(
+                "rounded-full px-3.5 py-1.5 text-[13px] font-medium",
+                STATUS_STYLES[status],
+              )}
             >
-              {ACTIONS.reject}
-            </Button>
-            <Button
-              loading={accept.isPending}
-              onClick={async () => {
-                await accept.mutateAsync();
-                router.push(ROUTES.ledger);
-              }}
-            >
-              {ACTIONS.accept}
-            </Button>
+              {STATUS_LABELS[status]}
+            </span>
+            {canReject && (
+              <Button
+                variant={ButtonVariant.Secondary}
+                loading={reject.isPending}
+                // mutate, not mutateAsync: a rejected promise here would be
+                // unhandled and crash the page instead of showing the reason.
+                onClick={() =>
+                  reject.mutate(undefined, {
+                    onSuccess: () => router.push(ROUTES.documents),
+                  })
+                }
+              >
+                {ACTIONS.reject}
+              </Button>
+            )}
+            {canAccept && (
+              <Button
+                loading={accept.isPending}
+                onClick={() =>
+                  accept.mutate(undefined, {
+                    onSuccess: () => router.push(ROUTES.documents),
+                  })
+                }
+              >
+                {ACTIONS.accept}
+              </Button>
+            )}
           </>
         }
       />
+
+      {actionError && (
+        <div
+          role="alert"
+          className="mb-5 rounded-panel bg-danger/10 px-5 py-4 text-[13px] text-danger"
+        >
+          {actionError instanceof Error
+            ? actionError.message
+            : "That action didn't go through."}
+        </div>
+      )}
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <Card className="p-6 sm:p-7">

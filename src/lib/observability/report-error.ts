@@ -50,6 +50,15 @@ export function reportError(
     context,
   };
 
+  if (isExpected(error)) {
+    // A 404, a 409, a rejected correction — the product working, not a defect.
+    // Logged for debugging but never at error level: it would page someone
+    // awake in production, and in dev it opens Next's error overlay on top of
+    // a failure the UI is already showing the user properly.
+    logger.warn(report.message, { source, ...context });
+    return;
+  }
+
   logger.error(report.message, { source, ...context });
-  if (!isExpected(error)) send(report);
+  send(report);
 }
