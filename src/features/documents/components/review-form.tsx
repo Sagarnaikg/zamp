@@ -94,17 +94,18 @@ export function ReviewForm({
 
       {children}
 
-      <div className="mt-7 flex items-center justify-between gap-4">
-        <p aria-live="polite" className="text-[13px] text-muted">
-          {correct.isSuccess && !isDirty ? (
+      <div className="mt-7 flex items-center justify-end gap-4">
+        {/*
+         * Announced always, rendered only when there is something to say —
+         * a permanent instruction line is noise, but silently saving a
+         * correction would leave the user unsure it took.
+         */}
+        <p aria-live="polite" className="text-[13px]">
+          {correct.isSuccess && !isDirty && (
             <span className="inline-flex items-center gap-1.5 text-confidence-strong">
               <Check className="size-4" strokeWidth={2} aria-hidden />
-              Saved — those fields are now marked as confirmed by you
+              Saved
             </span>
-          ) : isDirty ? (
-            "Unsaved changes"
-          ) : (
-            "Correct anything that looks wrong, then accept."
           )}
         </p>
         <Button

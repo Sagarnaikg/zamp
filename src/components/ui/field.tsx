@@ -1,6 +1,14 @@
 import { useId, type InputHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 
+/**
+ * Shared between the editable and read-only variants so the two cannot drift
+ * apart visually — the point of `StaticField` is that it is indistinguishable
+ * from a `Field` the user simply can't type into.
+ */
+const CONTROL_STYLES =
+  "min-h-12 rounded-control border border-border bg-surface px-4 text-sm text-foreground";
+
 export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "id"> {
   label: string;
   error?: string;
@@ -50,11 +58,11 @@ export function Field({
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={cn(
-          "h-12 rounded-control border bg-surface px-4 text-sm text-foreground",
+          CONTROL_STYLES,
           "placeholder:text-subtle transition-colors",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
           "disabled:bg-surface-raised disabled:text-muted",
-          error ? "border-danger" : "border-border",
+          error && "border-danger",
           className,
         )}
         {...props}
@@ -68,6 +76,21 @@ export function Field({
           {hint}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A field the user can read but not edit, for values outside the correctable
+ * schema. Rendered as `<dt>`/`<dd>` because it is data rather than a control
+ * — a disabled input would be both a lie to screen readers and a tab stop
+ * that goes nowhere — while looking identical to the inputs beside it.
+ */
+export function StaticField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <dt className="text-[13px] font-medium text-foreground">{label}</dt>
+      <dd className={cn(CONTROL_STYLES, "flex items-center py-3")}>{value}</dd>
     </div>
   );
 }
