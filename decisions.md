@@ -478,3 +478,237 @@ Exact file structure — will emerge during scaffolding and be logged if any non
 **What was cut:** a generic runtime deserializer/validator layer for every enum at the API boundary (Zod's `z.nativeEnum` already does this for the one boundary that needed it — the LLM's structured output; internal service-to-service calls are trusted TypeScript, not external input, so they don't need re-validation); renaming `ExtractionField`'s snake_case values to match `CorrectableField`'s camelCase ones (the snake_case values are the DB's `field_meta` JSON keys and changing them would be a real data migration, not a refactor — the lookup table bridges the two instead).
 
 **Standing rule going forward:** every point above applies to new code as it's written, not just this pass — enums for fixed value sets, constants centralized in `src/server/constants/`, tests written directly into `tests/` mirroring the source path, comments kept minimal and load-bearing.
+
+---
+
+## 28. Frontend architecture — [LOCKED]
+
+The backend was built first and deliberately UI-free, so this is a from-scratch
+set of choices rather than a refactor. Every decision below follows the same
+rule as the server: the structure should make the *next* feature obvious.
+
+### Stack
+
+| Concern | Choice | Why not the alternative |
+| --- | --- | --- |
+| Styling | Tailwind CSS v4 | Already installed; utility classes keep styling next to markup, which matters when components are small and numerous. A CSS-in-JS runtime would add bundle cost for nothing here. |
+| Animation | Framer Motion | Needed for one honest reason — dialog enter/exit, which CSS can't do well without unmount hacks. Not used for decoration. |
+| Server state | TanStack Query v5 | Caching, dedupe, invalidation, and loading/error states are exactly this problem. Hand-rolling it with `useEffect` is the classic source of race conditions and double fetches. |
+| Client state | Zustand, one store | See below — almost nothing qualifies. Redux (and its boilerplate) would be pure overhead at this size. |
+| Forms | React Hook Form + Zod | Zod is already the server's validation library, so upload rules are shared rather than restated. RHF keeps re-renders per-field instead of per-keystroke-per-form. |
+| Tests | Vitest + Testing Library | Vitest already runs the server suite; one runner, two projects. Testing Library pushes tests toward roles and labels, which makes them double as accessibility assertions. |
+
+### State: server vs client
+
+**Decision:** TanStack Query owns everything the server knows. Local `useState`
+owns everything one screen knows. Exactly one thing is global, and it's the
+upload queue (`features/documents/upload-store.ts`).
+
+The upload queue earns a store because uploads outlive the component that
+started them: drop three scans, navigate to review the first, and the other two
+must still be visibly progressing. React Query can't model in-flight local
+files, and lifting the state into a page component loses it on navigation.
+
+**Alternatives considered:** a global store for server data (re-implements
+caching and invalidation badly, and creates two sources of truth); Context for
+the upload queue (re-renders every consumer on each progress tick — a 10MB file
+fires a lot of ticks); Redux Toolkit (the boilerplate only pays off past a
+complexity this app doesn't have).
+
+### Data layer
+
+Three layers, one direction: **component → hook → api module → `fetch`**.
+
+`lib/api/client.ts` is the only place `fetch` is called, so credentials, the
+base URL, and error normalization are decided once. Every failure becomes a
+typed `ApiError` with a `kind` and a `retryable` flag, which is what lets
+`ErrorState` offer retry on a 502 and withhold it on a 404 — offering an action
+that cannot succeed is worse than not offering it. The server already returns a
+human sentence in `{ error }` (§18); that text is shown rather than replaced
+with generic copy.
+
+Uploads use `XMLHttpRequest`, not `fetch` — **fetch cannot report upload
+progress**. That's the whole reason, and it's isolated to `lib/api/upload.ts`.
+
+Cache keys live in one factory (`lib/api/query-keys.ts`). A key written inline
+at two call sites silently splits the cache, and that bug is invisible until
+someone notices stale data.
+
+### Project structure
+
+Feature-based, not type-based:
+
+```
+src/
+├── app/          # routes only — thin, no business logic
+├── config/       # env (zod-validated at boot) + feature flags
+├── constants/    # client counterpart of server/constants (§27)
+├── lib/          # api client, query client, observability, utils
+├── components/
+│   ├── ui/       # design system — generic, product-agnostic
+│   ├── domain/   # reused across features, meaningless outside this product
+│   └── layout/   # app shell
+└── features/     # documents/, ledger/ — api + hooks + types + components
+```
+
+The `ui` / `domain` split is deliberate: `Button` knows nothing about invoices,
+`ConfidenceBadge` is meaningless without them. Collapsing them would leave no
+signal about what's safe to change freely. A `components/` + `utils/` dump was
+rejected for the usual reason — it optimizes for "where does this file type go"
+over "what is this feature", and every feature ends up spread across six
+directories.
+
+**Types are derived from the server's**, never restated: `features/*/types.ts`
+uses `import type` against Drizzle's `$inferSelect` and the server's own
+interfaces, so a column rename is a compile error in the UI instead of an
+`undefined` at runtime. Type-only imports, so no server code reaches the bundle.
+
+### Design system
+
+The palette is still being designed, so components reference **semantic tokens
+only** — `bg-surface`, `text-muted`, `text-confidence-suspect` — defined once in
+`globals.css` and mapped through Tailwind's `@theme`. Changing the design means
+editing one file, not auditing every component. Light and dark are both defined
+now, because retrofitting dark mode after the fact means revisiting everything.
+
+Confidence colours are tokens in their own right: how sure the system is about a
+field is this product's core visual language, not incidental styling.
+
+### Accessibility
+
+Treated as part of the component contract rather than a later pass, because
+retrofitting it means rewriting components:
+
+- `Field` wires `aria-invalid` / `aria-describedby` to its own error, so an
+  individual form can't forget.
+- `Modal` traps Tab, restores focus to the trigger on close, closes on Escape,
+  and exposes `role="dialog"` with an accessible name.
+- `Table` is a real `<table>` with `<caption>` and `scope="col"` — the ledger is
+  dense numeric data, and screen readers get row/column relationships for free.
+- The shell renders a skip link as the first tab stop and marks the current nav
+  item with `aria-current="page"`.
+- `prefers-reduced-motion` is honoured globally, Framer Motion included.
+
+### Error, loading, and empty states
+
+First-class, not afterthoughts. Every list has an `EmptyState` with copy that
+says what to do next; every query surface has `ErrorState`; loading uses
+`Skeleton` shaped like the real content (a spinner makes the layout jump when
+data lands). `ErrorBoundary` wraps at named boundaries so one broken panel
+doesn't blank the page, and each boundary reports with its own `source`.
+
+### Observability
+
+`lib/observability/report-error.ts` is a vendor-agnostic sink: adding Sentry
+later means implementing one function, not touching every reporting site.
+**Expected failures are logged but not reported** — a 404 or a validation
+rejection is the product working, and flooding the sink with them is how real
+alerts get ignored. Reports use `sendBeacon` so they survive the page unloading.
+
+### Performance
+
+Deliberately *not* pre-optimized. `staleTime` is 30s and
+`refetchOnWindowFocus` is off because extracted data changes only when the user
+or the pipeline changes it — that's the real win here, and it's configuration
+rather than code. Memoization is not applied anywhere yet: `useMemo`/`memo`
+without a measured render problem adds complexity and hides the actual cost.
+Pagination is deferred until the ledger has enough rows to need it, at which
+point TanStack Query's infinite queries slot into the existing hooks.
+
+### What was cut
+
+- **Playwright / E2E user-flow tests** — the component tests cover the a11y and
+  state contracts that regress silently; a real browser flow test is worth
+  adding once the upload → review → accept screens exist to drive.
+- **A remote feature-flag service** — flags are static and build-time, read
+  through one accessor so swapping the source later is one file.
+- **A toast/notification system** — nothing yet needs transient global
+  messaging; mutation errors surface in place, next to the action that failed.
+- **Storybook** — a design system worth documenting in isolation needs the
+  design decided first.
+- **Optimistic updates on correction** — a correction also rewrites confidence
+  metadata server-side, so patching the cache by hand would risk showing a
+  stale badge next to a fresh value. Invalidate-and-refetch is correct here;
+  optimism can come back if the round-trip ever feels slow.
+
+---
+
+## 29. Design system, extracted from a reference — [LOCKED]
+
+**Decision:** the visual language is taken from a supplied reference dashboard
+rather than invented, and encoded as tokens so it can be applied consistently
+and changed centrally.
+
+**What was extracted:**
+
+| Trait | Applied as |
+| --- | --- |
+| A soft grey page with one large rounded shell floating on it | `--canvas` / `--shell`, `--radius-shell` (2.5rem) |
+| Bento tiles on near-white surfaces, separated tonally not by borders | `Card`, `--radius-card` (1.5rem), `--shadow-card` (barely there) |
+| Pill geometry for every action | `Button` is `rounded-full`; `Chip`, `SelectPill`, nav items follow |
+| Circular icon buttons with thin-stroke glyphs | `IconButton`, Lucide at `strokeWidth={1.75}` |
+| Geometric grotesque type, tight tracking at display sizes | Plus Jakarta Sans |
+| Label above, large figure below | `Stat` |
+
+**Colour: monochrome, by instruction.** The reference's orange was dropped and
+near-black (`#141414`) promoted to primary. Emphasis is carried by fill weight
+and contrast rather than hue, which is why the button variants differ by
+*surface* (solid black / light grey / bare) rather than by colour.
+
+**The one deliberate exception is confidence.** Field confidence keeps its hue,
+because it is the single thing in this product a user must read at a glance,
+and monochrome cannot express "this number may be wrong". The scale is
+desaturated so it sits inside the greyscale system instead of fighting it. This
+is a functional exception to a stylistic rule, and worth naming as such.
+
+**Typography:** the reference's face wasn't specified. Plus Jakarta Sans was
+chosen as the closest freely-available match — double-storey `a`, tall x-height,
+geometric bones. It is set in one place (`layout.tsx` → `--font-jakarta`), so
+swapping it if a licensed face is preferred is a one-line change. Body copy sets
+`font-variant-numeric: tabular-nums` globally: financial figures have to align
+down a column and must not jitter as values load.
+
+**Alternatives considered:** a component library (shadcn/ui, Radix themes) —
+rejected because the reference's geometry is specific enough that most of the
+work would have been overriding defaults, and the primitive set needed here is
+small; hard-coding the palette into components — rejected for the obvious
+reason, and the token indirection is what made switching from the initial
+placeholder palette to this one a single-file change.
+
+**What was cut:** the reference's voice-assistant header, the concentric-circle
+and candlestick charts, and the mood-rating row — none map to anything this
+product does, and building them would be decoration. The header's search slot
+was also dropped rather than shipping a search box that searches nothing.
+
+---
+
+## 30. Review screen: values beside the document — [LOCKED]
+
+**Decision:** the review screen is a two-column split — extracted values on the
+left, the original document rendered on the right — following the supplied
+invoice reference.
+
+**Reasoning:** verifying a total against a scan *is* the job. Any layout that
+makes the user hold a number in their head while they look elsewhere is where
+trust breaks down, and it's the exact moment this product either earns its
+keep or doesn't. Confidence badges sit on the field labels rather than in a
+separate column for the same reason: "should I check this one?" has to be
+answerable without moving the eye.
+
+**Only dirty fields are submitted.** The correction endpoint records an audit
+entry and pins confidence to 1 for every field it receives (§9) — so sending
+untouched values would forge a human verification the user never performed.
+React Hook Form's `dirtyFields` is what makes this precise, and is most of why
+it's here rather than plain state.
+
+**The PDF preview uses an `<iframe>`, not an `<object>`.** Both hand off to the
+browser's own PDF viewer, but `<object>` does not reliably fire `load` — found
+live: the loading skeleton sat on top of a perfectly-served PDF forever. A
+persistent "open original in a new tab" link is kept regardless, since some
+browsers refuse to render PDFs inline at all.
+
+**What was cut:** highlighting the region of the page a value came from. It's
+the natural next step for this screen and the most valuable one — but the
+extraction pipeline doesn't currently return bounding boxes, so it's a
+server-side change (asking the model for coordinates, and trusting them) rather
+than a UI one. Noted, not attempted.

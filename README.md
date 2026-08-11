@@ -94,7 +94,14 @@ what the account can reach and ranks the answer into tiers.
 src/
 ├── app/               # Routing layer — Next.js pages + API endpoints, kept thin
 │   └── api/           #   HTTP only: parse request → call service → shape response
-├── components/        # Frontend layer — reusable React components
+├── components/        # Presentation layer
+│   ├── ui/            #   Design system — generic, knows nothing about invoices
+│   ├── domain/        #   Shared across features, meaningless outside this product
+│   └── layout/        #   App shell, navigation
+├── features/          # Feature layer — api + hooks + types per feature
+├── config/            # Validated client env + feature flags
+├── constants/         # Client-side constants (routes, UI enums, copy)
+├── lib/               # API client, query client, observability, utils
 ├── server/            # Backend layer — never imported by client code
 │   ├── services/      #   Business logic / use-cases (ingestion, review, query)
 │   ├── constants/     #   Enums + config + user-facing messages, single source of truth

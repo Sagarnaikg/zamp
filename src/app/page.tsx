@@ -1,69 +1,59 @@
-import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight, ScanLine, ShieldCheck, Sparkles } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { ROUTES } from "@/constants";
+
+const PILLARS = [
+  {
+    icon: ScanLine,
+    title: "Read anything",
+    body: "Digital PDFs go through their text layer; scans and phone photos go to a vision model.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Checked, not guessed",
+    body: "Arithmetic, format, cross-reading and duplicate checks score every field independently.",
+  },
+  {
+    icon: Sparkles,
+    title: "Ask in English",
+    body: "Query the accepted ledger in plain language — the answer shows the filters it actually ran.",
+  },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="py-6">
+      <div className="max-w-2xl px-1">
+        <h1 className="text-4xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-5xl">
+          Turn messy documents into data you can trust
+        </h1>
+        <p className="mt-5 text-base leading-7 text-muted">
+          Upload an invoice or receipt. It gets read, checked against its own
+          arithmetic, cross-read when that&apos;s worth paying for, and scored field
+          by field — so you know which numbers to look at, and which you can leave
+          alone.
+        </p>
+        <Link
+          href={ROUTES.documents}
+          className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-accent px-6 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          Upload a document
+          <ArrowRight className="size-4" strokeWidth={2} aria-hidden />
+        </Link>
+      </div>
+
+      <div className="mt-12 grid gap-5 sm:grid-cols-3">
+        {PILLARS.map(({ icon: Icon, title, body }) => (
+          <Card key={title} className="p-6">
+            <span className="inline-flex size-11 items-center justify-center rounded-full bg-surface-raised text-foreground">
+              <Icon className="size-5" strokeWidth={1.75} aria-hidden />
+            </span>
+            <h2 className="mt-5 text-sm font-semibold text-foreground">{title}</h2>
+            <p className="mt-2 text-[13px] leading-6 text-muted">{body}</p>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

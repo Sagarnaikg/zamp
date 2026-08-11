@@ -1,26 +1,149 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/**
+ * Design system (decisions.md §29), extracted from the reference dashboard.
+ *
+ * Language: a soft grey page with a large floating rounded shell, bento cards
+ * on near-white surfaces, pill geometry for every action, and circular icon
+ * buttons. Monochrome — near-black carries all emphasis; the reference's
+ * orange is deliberately dropped.
+ *
+ * Components reference semantic names only, never raw values.
+ */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  /* The grey the app floats on, and the shell floating on it. */
+  --canvas: #e6e6e6;
+  --shell: #fbfbfb;
+
+  --surface: #ffffff;
+  /* Inner sections, inputs, secondary pills — the light grey fills. */
+  --surface-raised: #f4f4f4;
+  --surface-sunken: #efefef;
+  /* Black cards, used sparingly for a single focal figure. */
+  --surface-inverse: #141414;
+  --surface-inverse-foreground: #ffffff;
+
+  --border: #ececec;
+  --border-strong: #dcdcdc;
+
+  --foreground: #141414;
+  --muted: #8b8b8b;
+  --subtle: #b6b6b6;
+
+  /* Primary is near-black, not a hue: emphasis comes from contrast. */
+  --accent: #141414;
+  --accent-foreground: #ffffff;
+  --accent-hover: #2b2b2b;
+
+  --danger: #c2410c;
+  --danger-foreground: #ffffff;
+
+  /**
+   * Confidence keeps hue on purpose — it is the one thing in this product a
+   * user must read at a glance, and monochrome cannot say "this number may be
+   * wrong". Desaturated to sit inside the greyscale system rather than fight it.
+   */
+  --confidence-human: #4338ca;
+  --confidence-strong: #15803d;
+  --confidence-verified: #0f766e;
+  --confidence-unverified: #a16207;
+  --confidence-suspect: #b91c1c;
+
+  --focus-ring: #141414;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --canvas: #0b0b0c;
+    --shell: #141416;
+
+    --surface: #1a1a1d;
+    --surface-raised: #232327;
+    --surface-sunken: #1f1f22;
+    --surface-inverse: #fafafa;
+    --surface-inverse-foreground: #141414;
+
+    --border: #2c2c31;
+    --border-strong: #3a3a41;
+
+    --foreground: #f5f5f5;
+    --muted: #9a9aa2;
+    --subtle: #6b6b73;
+
+    --accent: #fafafa;
+    --accent-foreground: #141414;
+    --accent-hover: #e2e2e2;
+
+    --danger: #f87171;
+    --danger-foreground: #2a0a0a;
+
+    --confidence-human: #a5b4fc;
+    --confidence-strong: #4ade80;
+    --confidence-verified: #2dd4bf;
+    --confidence-unverified: #fbbf24;
+    --confidence-suspect: #f87171;
+
+    --focus-ring: #fafafa;
   }
 }
 
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-shell: var(--shell);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-inverse: var(--surface-inverse);
+  --color-surface-inverse-foreground: var(--surface-inverse-foreground);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-hover: var(--accent-hover);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+
+  --color-confidence-human: var(--confidence-human);
+  --color-confidence-strong: var(--confidence-strong);
+  --color-confidence-verified: var(--confidence-verified);
+  --color-confidence-unverified: var(--confidence-unverified);
+  --color-confidence-suspect: var(--confidence-suspect);
+
+  /* Generous, nested radii are the most recognisable trait of the reference. */
+  --radius-shell: 2.5rem;
+  --radius-card: 1.5rem;
+  --radius-panel: 1.25rem;
+  --radius-control: 0.875rem;
+
+  --font-sans: var(--font-jakarta);
+  --font-mono: var(--font-geist-mono);
+
+  /* Barely-there elevation: separation is tonal, not shadowed. */
+  --shadow-shell: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 40px rgb(0 0 0 / 0.06);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.03);
+}
+
 body {
-  background: var(--background);
+  background: var(--canvas);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Financial figures must align down a column and not jitter while loading. */
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

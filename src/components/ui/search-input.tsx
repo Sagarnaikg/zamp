@@ -1,0 +1,41 @@
+import { useId, type InputHTMLAttributes } from "react";
+import { Search } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
+
+export interface SearchInputProps
+  extends Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "type"> {
+  label: string;
+}
+
+/**
+ * Search field with the reference's circled glyph sitting inside the pill.
+ * `type="search"` so browsers offer clear-and-escape behaviour for free.
+ */
+export function SearchInput({ label, className, ...props }: SearchInputProps) {
+  const id = useId();
+
+  return (
+    <div className="relative flex w-full items-center">
+      <label htmlFor={id} className="sr-only">
+        {label}
+      </label>
+      <span
+        className="pointer-events-none absolute left-1.5 inline-flex size-9 items-center justify-center rounded-full bg-surface-raised text-muted"
+        aria-hidden
+      >
+        <Search className="size-4" strokeWidth={1.75} />
+      </span>
+      <input
+        id={id}
+        type="search"
+        className={cn(
+          "h-12 w-full rounded-full bg-surface pl-13 pr-5 text-sm text-foreground",
+          "placeholder:text-subtle",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+          className,
+        )}
+        {...props}
+      />
+    </div>
+  );
+}
