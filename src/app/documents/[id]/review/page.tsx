@@ -167,12 +167,11 @@ export default function ReviewPage() {
             </div>
 
             {extraction ? (
-              <>
-                <ReviewForm documentId={id} extraction={extraction} />
+              <ReviewForm documentId={id} extraction={extraction}>
                 {extraction.extraFields.length > 0 && (
                   <ExtraFields fields={extraction.extraFields} />
                 )}
-              </>
+              </ReviewForm>
             ) : (
               <EmptyState
                 title={processing ? "Still reading this document" : "Nothing was extracted"}

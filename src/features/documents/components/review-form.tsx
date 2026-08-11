@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { Check } from "lucide-react";
 import {
@@ -37,9 +38,12 @@ function toFormValues(extraction: Extraction): FormValues {
 export function ReviewForm({
   documentId,
   extraction,
+  children,
 }: {
   documentId: string;
   extraction: Extraction;
+  /** Rendered after the fields but before the footer, so save stays last. */
+  children?: ReactNode;
 }) {
   const correct = useCorrectFields(documentId);
 
@@ -87,6 +91,8 @@ export function ReviewForm({
           );
         })}
       </div>
+
+      {children}
 
       <div className="mt-7 flex items-center justify-between gap-4">
         <p aria-live="polite" className="text-[13px] text-muted">
