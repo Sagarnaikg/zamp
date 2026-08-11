@@ -28,7 +28,8 @@ import {
 } from "@/features/documents/hooks";
 import { ReviewForm } from "@/features/documents/components/review-form";
 import { DocumentPreview } from "@/features/documents/components/document-preview";
-import { ExtractionExtras } from "@/features/documents/components/extraction-extras";
+import { ExtraFields } from "@/features/documents/components/extra-fields";
+import { AuditTrail } from "@/features/documents/components/audit-trail";
 import { PipelinePanel } from "@/features/documents/components/pipeline-panel";
 
 const TABS = [
@@ -76,7 +77,7 @@ export default function ReviewPage() {
     );
   }
 
-  const { document, extraction, lineItems, auditLog } = data;
+  const { document, extraction, auditLog } = data;
   const status = document.status as DocumentStatus;
   const processing = status === DocumentStatus.Processing;
 
@@ -166,7 +167,12 @@ export default function ReviewPage() {
             </div>
 
             {extraction ? (
-              <ReviewForm documentId={id} extraction={extraction} />
+              <>
+                <ReviewForm documentId={id} extraction={extraction} />
+                {extraction.extraFields.length > 0 && (
+                  <ExtraFields fields={extraction.extraFields} />
+                )}
+              </>
             ) : (
               <EmptyState
                 title={processing ? "Still reading this document" : "Nothing was extracted"}
@@ -194,13 +200,7 @@ export default function ReviewPage() {
           </Card>
         </div>
 
-        {extraction && (
-          <ExtractionExtras
-            extraction={extraction}
-            lineItems={lineItems}
-            auditLog={auditLog}
-          />
-        )}
+        <AuditTrail entries={auditLog} />
       </TabPanel>
 
       <TabPanel value={ReviewTab.Pipeline} active={activeTab} idPrefix="review">

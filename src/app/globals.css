@@ -53,8 +53,16 @@
   --focus-ring: #141414;
 }
 
+/**
+ * Dark values live in one place and are applied by two selectors: the OS
+ * preference (so the app is correct before any JS runs, and for users with
+ * JS disabled), and an explicit `data-theme="dark"` from the toggle.
+ *
+ * The media query excludes an explicit *light* choice, so choosing light on a
+ * dark-mode OS actually sticks — a one-way override would ignore it.
+ */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --canvas: #0b0b0c;
     --shell: #141416;
 
@@ -86,6 +94,40 @@
 
     --focus-ring: #fafafa;
   }
+}
+
+/* The toggle's explicit choice, which must also work on a light-mode OS. */
+:root[data-theme="dark"] {
+  --canvas: #0b0b0c;
+  --shell: #141416;
+
+  --surface: #1a1a1d;
+  --surface-raised: #232327;
+  --surface-sunken: #1f1f22;
+  --surface-inverse: #fafafa;
+  --surface-inverse-foreground: #141414;
+
+  --border: #2c2c31;
+  --border-strong: #3a3a41;
+
+  --foreground: #f5f5f5;
+  --muted: #9a9aa2;
+  --subtle: #6b6b73;
+
+  --accent: #fafafa;
+  --accent-foreground: #141414;
+  --accent-hover: #e2e2e2;
+
+  --danger: #f87171;
+  --danger-foreground: #2a0a0a;
+
+  --confidence-human: #a5b4fc;
+  --confidence-strong: #4ade80;
+  --confidence-verified: #2dd4bf;
+  --confidence-unverified: #fbbf24;
+  --confidence-suspect: #f87171;
+
+  --focus-ring: #fafafa;
 }
 
 @theme inline {

@@ -7,6 +7,7 @@ import { Layers } from "lucide-react";
 import { A11Y, ROUTES } from "@/constants";
 import { features } from "@/config/features";
 import { cn } from "@/lib/utils/cn";
+import { ThemeToggle } from "./theme-toggle";
 
 const MAIN_CONTENT_ID = "main-content";
 
@@ -23,14 +24,15 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 /**
- * The reference's chrome: a soft grey page with one large rounded shell
- * floating on it, everything else nested inside.
+ * Full-bleed chrome: a header bar across the top, content below. The nav is
+ * centred independently of the logo and actions — equal-width flexible
+ * spacers on both sides, so it stays put rather than drifting as those grow.
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   return (
-    <div className="min-h-full bg-canvas p-3 sm:p-5">
+    <div className="flex min-h-full flex-col bg-canvas">
       {/* First tab stop: lets keyboard users jump the nav on every page. */}
       <a
         href={`#${MAIN_CONTENT_ID}`}
@@ -39,26 +41,30 @@ export function AppShell({ children }: { children: ReactNode }) {
         {A11Y.skipToContent}
       </a>
 
-      <div className="mx-auto flex min-h-[calc(100vh-1.5rem)] w-full max-w-[1600px] flex-col rounded-shell bg-shell shadow-shell sm:min-h-[calc(100vh-2.5rem)]">
-        <header className="flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-5 sm:px-8">
-          <Link
-            href={ROUTES.home}
-            className="flex items-center gap-3 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
-          >
-            <span className="inline-flex size-11 items-center justify-center rounded-full bg-surface-inverse text-surface-inverse-foreground">
-              <Layers className="size-5" strokeWidth={1.75} aria-hidden />
-            </span>
-            <span className="leading-tight">
-              <span className="block text-[15px] font-bold tracking-tight text-foreground">
-                Zamp
+      <header className="sticky top-0 z-30 border-b border-border bg-shell/85 backdrop-blur">
+        <div className="flex items-center gap-4 px-5 py-3 sm:px-7">
+          <div className="flex flex-1 items-center">
+            <Link
+              href={ROUTES.home}
+              className="flex items-center gap-3 rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+            >
+              <span className="inline-flex size-10 items-center justify-center rounded-full bg-surface-inverse text-surface-inverse-foreground">
+                <Layers className="size-5" strokeWidth={1.75} aria-hidden />
               </span>
-              <span className="block text-[13px] text-muted">Document intelligence</span>
-            </span>
-          </Link>
+              <span className="hidden leading-tight sm:block">
+                <span className="block text-[15px] font-bold tracking-tight text-foreground">
+                  Zamp
+                </span>
+                <span className="block text-[13px] text-muted">
+                  Document intelligence
+                </span>
+              </span>
+            </Link>
+          </div>
 
           <nav
             aria-label={A11Y.primaryNavigation}
-            className="flex items-center gap-1.5 sm:ml-4"
+            className="flex shrink-0 items-center gap-1.5"
           >
             {NAV_ITEMS.filter((item) => item.enabled).map((item) => {
               const active = pathname.startsWith(item.href);
@@ -81,15 +87,16 @@ export function AppShell({ children }: { children: ReactNode }) {
               );
             })}
           </nav>
-        </header>
 
-        <main
-          id={MAIN_CONTENT_ID}
-          className="flex-1 rounded-shell bg-canvas/40 px-3 pb-3 pt-1 sm:px-5 sm:pb-5"
-        >
-          <div className="h-full">{children}</div>
-        </main>
-      </div>
+          <div className="flex flex-1 items-center justify-end">
+            <ThemeToggle />
+          </div>
+        </div>
+      </header>
+
+      <main id={MAIN_CONTENT_ID} className="flex-1 px-5 py-6 sm:px-7">
+        {children}
+      </main>
     </div>
   );
 }

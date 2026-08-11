@@ -80,6 +80,11 @@ export enum ReviewTab {
   Pipeline = "pipeline",
 }
 
+export enum Theme {
+  Light = "light",
+  Dark = "dark",
+}
+
 export enum ButtonVariant {
   Primary = "primary",
   Secondary = "secondary",

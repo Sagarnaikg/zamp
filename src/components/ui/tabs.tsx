@@ -63,7 +63,7 @@ export function Tabs<T extends string>({
       ref={listRef}
       role="tablist"
       onKeyDown={onKeyDown}
-      className="inline-flex items-center gap-1 rounded-full bg-surface-raised p-1"
+      className="inline-flex items-center gap-0.5 rounded-full bg-surface-raised p-0.5"
     >
       {tabs.map((tab) => {
         const selected = tab.value === active;
@@ -79,7 +79,7 @@ export function Tabs<T extends string>({
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(tab.value)}
             className={cn(
-              "inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium",
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium",
               "transition-colors focus-visible:outline-2 focus-visible:outline-offset-2",
               "focus-visible:outline-accent",
               selected
@@ -87,7 +87,7 @@ export function Tabs<T extends string>({
                 : "text-muted hover:text-foreground",
             )}
           >
-            {Icon && <Icon className="size-4" strokeWidth={1.75} aria-hidden />}
+            {Icon && <Icon className="size-3.5" strokeWidth={1.75} aria-hidden />}
             {tab.label}
             {tab.badge}
           </button>
