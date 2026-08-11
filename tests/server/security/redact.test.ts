@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { redactSensitive } from "./redact";
+import { redactSensitive } from "@/server/security/redact";
 
 // Publicly documented test/dummy numbers — safe to use in source and tests,
 // never real cardholder data. Both pass Luhn, as any valid-looking card

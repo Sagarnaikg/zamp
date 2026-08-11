@@ -457,3 +457,24 @@ Clean digital invoice                    Faded scan, two providers
 ## 26. Deliberately not yet decided
 
 Exact file structure — will emerge during scaffolding and be logged if any non-obvious call is made.
+
+---
+
+## 27. Codebase-wide conventions, adopted as standing rules — [LOCKED]
+
+**Decision:** after a full read-through of the codebase, a set of conventions was adopted project-wide (not a one-off cleanup) and applied across every server module:
+
+- **String enums over string literals** wherever a fixed set of values exists — `Provider`, `DocumentStatus`, `FileKind`, `ExtractionField`, `PipelineStageKey`, `QueryField`/`QueryOperator`/`QueryAggregate`, etc. — all in `src/server/constants/enums.ts`. Comparisons, object keys, and Zod schemas (`z.nativeEnum(...)`) all reference the enum, never the bare string.
+- **One constants module** (`src/server/constants/`, barrel-exported): `enums.ts` for enums, `config.ts` for numeric/structural config (provider URLs, timeouts, upload limits, confidence buckets, HTTP status codes, the static pipeline graph), `messages.ts` for every user-facing and internal string (`SETUP_MESSAGES`, `LLM_ERROR_MESSAGES`, `API_MESSAGES`, `PIPELINE_DETAILS`, `FIELD_REASONS`, the extraction prompts). No route, service, or LLM module hardcodes a URL, status code, or message string anymore.
+- **`interface` over `type`** for anything reused across files (`StageResult`, `TokenUsage`, `FieldMeta`, `PipelineNode`); `type` stays for one-off unions/intersections local to a single file.
+- **Errors classified once**: `llm/errors.ts` reduces to a flat sequence of predicate functions (`isRateLimit`, `isAuthFailure`, ...) each returning a `classified(kind, message)` result — no nested branching, and every message sourced from `LLM_ERROR_MESSAGES`.
+- **Ternaries and nested conditionals extracted** into named functions where the branch itself was non-obvious — e.g. `scoreFrom(confirmCount)` and `reasonsOf(findings)` in `confidence/engine.ts`, `aggregateExpr(aggregate)` in `services/ledger.ts`, `toViewStatus(status)` in `ingest/trace.ts`.
+- **Object-key deserialization over string maps**: correcting a field maps `CorrectableField` (camelCase, DB column names) to `ExtractionField` (snake_case, field-meta keys) through an explicit `CORRECTABLE_TO_EXTRACTION_FIELD` lookup table instead of a regex transforming the string at each call site.
+- **Tests physically separated from source**: every `*.test.ts` moved from sitting next to its source file into `tests/`, mirroring the `src/` hierarchy exactly (`src/server/confidence/engine.ts` → `tests/server/confidence/engine.test.ts`). `vitest.config.ts`'s `include` updated accordingly.
+- **Comments trimmed to load-bearing only**: kept where they explain a non-obvious constraint or the "why" behind a decision (with a `decisions.md §N` pointer where relevant); removed where the code was already self-explanatory or the comment risked drifting out of sync with a later edit.
+
+**Verification, not just compilation:** after the full migration, `npx tsc --noEmit` is clean project-wide, `npx eslint src` reports nothing, all 122 unit tests pass unchanged (enum values are the same strings as before, so no test assertion needed rewording), `drizzle-kit generate` confirms zero schema drift, and a live end-to-end run — upload → extract → validate → adaptive second-reading skip → duplicate check → score → human correction → accept → ledger → NL query — was re-verified against the running dev server after the refactor.
+
+**What was cut:** a generic runtime deserializer/validator layer for every enum at the API boundary (Zod's `z.nativeEnum` already does this for the one boundary that needed it — the LLM's structured output; internal service-to-service calls are trusted TypeScript, not external input, so they don't need re-validation); renaming `ExtractionField`'s snake_case values to match `CorrectableField`'s camelCase ones (the snake_case values are the DB's `field_meta` JSON keys and changing them would be a real data migration, not a refactor — the lookup table bridges the two instead).
+
+**Standing rule going forward:** every point above applies to new code as it's written, not just this pass — enums for fixed value sets, constants centralized in `src/server/constants/`, tests written directly into `tests/` mirroring the source path, comments kept minimal and load-bearing.

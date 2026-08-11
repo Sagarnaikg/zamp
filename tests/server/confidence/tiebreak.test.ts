@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { correctedValues, findDisputes, resolveDisputes } from "./tiebreak";
-import type { Extraction } from "./types";
+import { correctedValues, findDisputes, resolveDisputes } from "@/server/confidence/tiebreak";
+import type { Extraction } from "@/server/confidence/types";
+import { ExpenseCategory, ExtractionField } from "@/server/constants";
 
 function extraction(overrides: Partial<Extraction> = {}): Extraction {
   return {
@@ -11,7 +12,7 @@ function extraction(overrides: Partial<Extraction> = {}): Extraction {
     subtotal: 760,
     tax: 76,
     total: 836,
-    category: "software",
+    category: ExpenseCategory.Software,
     line_items: [],
     extra_fields: [],
     ...overrides,
@@ -29,7 +30,7 @@ describe("findDisputes", () => {
       extraction({ total: 863, vendor: "Acme Cloud Services, Inc" }),
     );
     // Vendor differs only in punctuation, so it is not a real dispute.
-    expect(disputes).toEqual(["total"]);
+    expect(disputes).toEqual([ExtractionField.Total]);
   });
 
   it("ignores a field one reading left empty", () => {
@@ -44,9 +45,7 @@ describe("resolveDisputes", () => {
   const second = extraction({ total: 863 });
 
   it("resolves in favour of the primary when the third read agrees with it", () => {
-    const [resolution] = resolveDisputes(primary, second, { total: 836 }, [
-      "total",
-    ]);
+    const [resolution] = resolveDisputes(primary, second, { total: 836 }, [ExtractionField.Total]);
     expect(resolution.outcome).toBe("resolved");
     expect(resolution.winner).toBe(836);
     expect(resolution.correctsPrimary).toBe(false);
@@ -55,9 +54,7 @@ describe("resolveDisputes", () => {
   });
 
   it("corrects the stored value when the third read backs the second", () => {
-    const [resolution] = resolveDisputes(primary, second, { total: 863 }, [
-      "total",
-    ]);
+    const [resolution] = resolveDisputes(primary, second, { total: 863 }, [ExtractionField.Total]);
     expect(resolution.outcome).toBe("resolved");
     expect(resolution.winner).toBe(863);
     expect(resolution.correctsPrimary).toBe(true);
@@ -65,9 +62,7 @@ describe("resolveDisputes", () => {
   });
 
   it("escalates to a human when all three readings differ", () => {
-    const [resolution] = resolveDisputes(primary, second, { total: 638 }, [
-      "total",
-    ]);
+    const [resolution] = resolveDisputes(primary, second, { total: 638 }, [ExtractionField.Total]);
     expect(resolution.outcome).toBe("unresolved");
     expect(resolution.finding.kind).toBe("suspect");
     // All three candidates must be visible to whoever reviews it.
@@ -77,9 +72,7 @@ describe("resolveDisputes", () => {
   });
 
   it("escalates when the focused re-read cannot find the field", () => {
-    const [resolution] = resolveDisputes(primary, second, { total: null }, [
-      "total",
-    ]);
+    const [resolution] = resolveDisputes(primary, second, { total: null }, [ExtractionField.Total]);
     expect(resolution.outcome).toBe("abstained");
     expect(resolution.finding.kind).toBe("suspect");
     expect(resolution.finding.reason).toMatch(/could not find/i);
@@ -92,7 +85,7 @@ describe("resolveDisputes", () => {
       a,
       b,
       { vendor: "ACME CLOUD SERVICES, INC" },
-      ["vendor"],
+      [ExtractionField.Vendor],
     );
     expect(resolution.outcome).toBe("resolved");
     expect(resolution.correctsPrimary).toBe(false);
@@ -105,7 +98,7 @@ describe("resolveDisputes", () => {
       p,
       s,
       { total: 863, invoice_number: "INV-2041" },
-      ["invoice_number", "total"],
+      [ExtractionField.InvoiceNumber, ExtractionField.Total],
     );
     const byField = Object.fromEntries(resolutions.map((r) => [r.field, r]));
     expect(byField.total.correctsPrimary).toBe(true);
@@ -121,7 +114,7 @@ describe("correctedValues", () => {
       p,
       s,
       { total: 863, invoice_number: "INV-2041" },
-      ["invoice_number", "total"],
+      [ExtractionField.InvoiceNumber, ExtractionField.Total],
     );
     expect(correctedValues(resolutions)).toEqual({ total: 863 });
   });
@@ -131,7 +124,7 @@ describe("correctedValues", () => {
       extraction(),
       extraction({ total: 863 }),
       { total: 999 },
-      ["total"],
+      [ExtractionField.Total],
     );
     expect(correctedValues(resolutions)).toEqual({});
   });

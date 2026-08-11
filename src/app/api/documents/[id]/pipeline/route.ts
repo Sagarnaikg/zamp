@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspaceId } from "@/server/workspace";
 import { getDocumentPipeline } from "@/server/services/review";
+import { API_MESSAGES, HTTP_STATUS } from "@/server/constants";
 
 /**
  * What ingestion actually did, as a graph the UI can draw: nodes with
@@ -16,7 +17,10 @@ export async function GET(
 
   const pipeline = await getDocumentPipeline(workspaceId, id);
   if (!pipeline) {
-    return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: API_MESSAGES.documentNotFound },
+      { status: HTTP_STATUS.notFound },
+    );
   }
   return NextResponse.json(pipeline);
 }

@@ -4,6 +4,7 @@ import { db } from "@/server/db";
 import { documents } from "@/server/db/schema";
 import { getStorage } from "@/server/storage";
 import { getWorkspaceId } from "@/server/workspace";
+import { API_MESSAGES, HTTP_STATUS } from "@/server/constants";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -16,7 +17,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
     where: and(eq(documents.id, id), eq(documents.workspaceId, workspaceId)),
   });
   if (!doc) {
-    return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: API_MESSAGES.documentNotFound },
+      { status: HTTP_STATUS.notFound },
+    );
   }
 
   // Blob driver stores a full URL — hand the browser off to it directly.

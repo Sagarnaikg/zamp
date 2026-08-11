@@ -1,20 +1,19 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { PROVIDERS, type Provider } from "./providers";
+import { PROVIDERS } from "./providers";
 import { getCapabilities, type ProviderCapability } from "./capabilities";
-
-export type { Provider };
-
-export type Task =
-  | "extract_vision" // scans/photos → strong model
-  | "extract_text" // digital-PDF text → cheap model
-  | "second_opinion" // independent re-reading for the agreement signal
-  | "query_translate"; // NL → filter DSL, cheap and fast
+import { LlmTask, Provider, SETUP_MESSAGES } from "@/server/constants";
 
 export interface RoutedModel {
   provider: Provider;
   modelId: string;
   model: BaseChatModel;
 }
+
+/** Tasks worth the strong tier; everything else uses the cheap one. */
+const STRONG_TIER_TASKS: readonly LlmTask[] = [
+  LlmTask.ExtractVision,
+  LlmTask.SecondOpinion,
+];
 
 /** Error the API layer can turn into a setup message rather than a 500. */
 export class NoProviderError extends Error {
@@ -24,24 +23,22 @@ export class NoProviderError extends Error {
   }
 }
 
-function pickModel(capability: ProviderCapability, task: Task): string {
-  // Vision extraction and second readings get the strong tier; frequent,
-  // simple tasks get the cheap one (decisions.md §6).
-  return task === "extract_vision" || task === "second_opinion"
-    ? capability.strong
-    : capability.cheap;
+function pickModel(capability: ProviderCapability, task: LlmTask): string {
+  return STRONG_TIER_TASKS.includes(task) ? capability.strong : capability.cheap;
 }
 
 /**
- * Pick a model for a task from what this environment can actually reach.
- * `avoid` lets the second reading prefer a different provider than the
- * primary used; with one provider configured it falls back to the same one,
- * where independence comes from the tier and modality difference instead.
+ * Pick a model from what this environment can reach. `avoid` lets the second
+ * reading prefer a different provider; with one configured it falls back to
+ * the same one, where independence comes from tier and modality instead.
  */
-export async function route(task: Task, avoid?: Provider): Promise<RoutedModel> {
+export async function route(
+  task: LlmTask,
+  avoid?: Provider,
+): Promise<RoutedModel> {
   const { providers, problem } = await getCapabilities();
   if (providers.length === 0) {
-    throw new NoProviderError(problem ?? "No usable LLM provider configured.");
+    throw new NoProviderError(problem ?? SETUP_MESSAGES.noProviderConfigured);
   }
 
   const preferred = avoid

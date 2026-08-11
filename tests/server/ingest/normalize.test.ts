@@ -3,7 +3,7 @@ import {
   canonicalKey,
   normalizeExtraFields,
   slugifyKey,
-} from "./normalize";
+} from "@/server/ingest/normalize";
 
 describe("slugifyKey", () => {
   it("converts printed labels to snake_case", () => {

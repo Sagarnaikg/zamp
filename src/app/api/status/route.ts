@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCapabilities, resetCapabilities } from "@/server/llm/capabilities";
+import { HTTP_STATUS } from "@/server/constants";
 
 /**
  * Setup readiness for the UI: which providers were discovered, which models
@@ -22,7 +23,7 @@ export async function GET() {
       })),
       crossProviderAgreement: capabilities.providers.length > 1,
     },
-    { status: capabilities.ready ? 200 : 503 },
+    { status: capabilities.ready ? HTTP_STATUS.ok : HTTP_STATUS.serviceUnavailable },
   );
 }
 
@@ -32,6 +33,6 @@ export async function POST() {
   const capabilities = await getCapabilities();
   return NextResponse.json(
     { ready: capabilities.ready, problem: capabilities.problem },
-    { status: capabilities.ready ? 200 : 503 },
+    { status: capabilities.ready ? HTTP_STATUS.ok : HTTP_STATUS.serviceUnavailable },
   );
 }

@@ -1,3 +1,4 @@
+import { EXTRACTION, ExtractionField, FindingKind } from "@/server/constants";
 import {
   type Extraction,
   type Finding,
@@ -11,11 +12,8 @@ import {
  * localizes which field is suspect instead of flagging everything.
  */
 
-/** Allow 2 cents of drift for per-line rounding on printed documents. */
-const TOLERANCE_CENTS = 2;
-
 function eq(a: number, b: number): boolean {
-  return Math.abs(a - b) <= TOLERANCE_CENTS;
+  return Math.abs(a - b) <= EXTRACTION.arithmeticToleranceCents;
 }
 
 /** True when two amounts have the same digits in a different order. */
@@ -42,8 +40,8 @@ export function arithmeticSignal(extraction: Extraction): Finding[] {
       const actual = toCents(item.amount)!;
       if (!eq(expected, actual)) {
         findings.push({
-          field: "line_items",
-          kind: "suspect",
+          field: ExtractionField.LineItems,
+          kind: FindingKind.Suspect,
           reason: `Line ${i + 1} ("${item.description ?? "?"}"): ${item.quantity} × ${item.unit_price} = ${formatAmount(expected)}, but the line amount reads ${formatAmount(actual)}`,
         });
       }
@@ -62,8 +60,8 @@ export function arithmeticSignal(extraction: Extraction): Finding[] {
   if (itemSum !== null && subtotal !== null) {
     itemsMatchSubtotal = eq(itemSum, subtotal);
     if (itemsMatchSubtotal) {
-      findings.push({ field: "subtotal", kind: "confirm" });
-      findings.push({ field: "line_items", kind: "confirm" });
+      findings.push({ field: ExtractionField.Subtotal, kind: FindingKind.Confirm });
+      findings.push({ field: ExtractionField.LineItems, kind: FindingKind.Confirm });
     }
   }
 
@@ -73,10 +71,10 @@ export function arithmeticSignal(extraction: Extraction): Finding[] {
     const expectedTotal = subtotal + (tax ?? 0);
     subtotalTaxMatchTotal = eq(expectedTotal, total);
     if (subtotalTaxMatchTotal) {
-      findings.push({ field: "total", kind: "confirm" });
-      if (tax !== null) findings.push({ field: "tax", kind: "confirm" });
+      findings.push({ field: ExtractionField.Total, kind: FindingKind.Confirm });
+      if (tax !== null) findings.push({ field: ExtractionField.Tax, kind: FindingKind.Confirm });
       if (itemsMatchSubtotal === null) {
-        findings.push({ field: "subtotal", kind: "confirm" });
+        findings.push({ field: ExtractionField.Subtotal, kind: FindingKind.Confirm });
       }
     }
   }
@@ -92,8 +90,8 @@ export function arithmeticSignal(extraction: Extraction): Finding[] {
       subtotalTaxMatchTotal === false
     ) {
       findings.push({
-        field: "subtotal",
-        kind: "suspect",
+        field: ExtractionField.Subtotal,
+        kind: FindingKind.Suspect,
         reason: `Line items sum to ${sumStr}, which is consistent with the total — but subtotal reads ${subStr}${looksLikeDigitSwap(itemSum!, subtotal!) ? " (possible digit swap)" : ""}`,
       });
     } else {
@@ -101,13 +99,13 @@ export function arithmeticSignal(extraction: Extraction): Finding[] {
         ? " (possible digit swap)"
         : "";
       findings.push({
-        field: "subtotal",
-        kind: "suspect",
+        field: ExtractionField.Subtotal,
+        kind: FindingKind.Suspect,
         reason: `Line items sum to ${sumStr} but subtotal reads ${subStr}${swap}`,
       });
       findings.push({
-        field: "line_items",
-        kind: "suspect",
+        field: ExtractionField.LineItems,
+        kind: FindingKind.Suspect,
         reason: `Line items sum to ${sumStr} but subtotal reads ${subStr} — one of them is misread, or the document's own math is wrong`,
       });
     }
@@ -117,19 +115,18 @@ export function arithmeticSignal(extraction: Extraction): Finding[] {
     const expected = formatAmount(subtotal! + (tax ?? 0));
     const totStr = formatAmount(total!);
     // If line items agree with the subtotal, the total is the odd one out.
-    const blame = itemsMatchSubtotal === true ? "total" : "total";
     const swap = looksLikeDigitSwap(subtotal! + (tax ?? 0), total!)
       ? " (possible digit swap)"
       : "";
     findings.push({
-      field: blame,
-      kind: "suspect",
+      field: ExtractionField.Total,
+      kind: FindingKind.Suspect,
       reason: `Subtotal ${formatAmount(subtotal!)}${tax !== null ? ` + tax ${formatAmount(tax)}` : ""} = ${expected}, but total reads ${totStr}${swap}`,
     });
     if (itemsMatchSubtotal !== true && tax !== null) {
       findings.push({
-        field: "tax",
-        kind: "suspect",
+        field: ExtractionField.Tax,
+        kind: FindingKind.Suspect,
         reason: `Subtotal + tax does not equal the total — tax may be misread`,
       });
     }

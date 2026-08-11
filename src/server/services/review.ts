@@ -8,23 +8,15 @@ import {
   type FieldMeta,
 } from "@/server/db/schema";
 import { buildPipelineView } from "@/server/ingest/trace";
-
-/** Fields a human may correct in review. Allow-list, not reflection. */
-const CORRECTABLE_FIELDS = [
-  "vendor",
-  "invoiceNumber",
-  "docDate",
-  "currency",
-  "subtotal",
-  "tax",
-  "total",
-  "category",
-] as const;
-
-export type CorrectableField = (typeof CORRECTABLE_FIELDS)[number];
+import {
+  CORRECTABLE_TO_EXTRACTION_FIELD,
+  CorrectableField,
+  DocumentStatus,
+  FIELD_REASONS,
+} from "@/server/constants";
 
 export function isCorrectableField(field: string): field is CorrectableField {
-  return (CORRECTABLE_FIELDS as readonly string[]).includes(field);
+  return (Object.values(CorrectableField) as string[]).includes(field);
 }
 
 export async function getDocumentDetail(workspaceId: string, documentId: string) {
@@ -113,9 +105,8 @@ export async function correctFields(
       newValue,
     });
 
-    // field_meta keys use the extraction's snake_case field names.
-    const metaKey = field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
-    fieldMeta[metaKey] = { confidence: 1, reasons: ["Corrected by you"] };
+    const metaKey = CORRECTABLE_TO_EXTRACTION_FIELD[field];
+    fieldMeta[metaKey] = { confidence: 1, reasons: [FIELD_REASONS.correctedByUser] };
   }
 
   if (Object.keys(updates).length === 0) {
@@ -135,12 +126,12 @@ export async function correctFields(
 export async function acceptDocument(workspaceId: string, documentId: string) {
   const [updated] = await db
     .update(documents)
-    .set({ status: "accepted", updatedAt: new Date() })
+    .set({ status: DocumentStatus.Accepted, updatedAt: new Date() })
     .where(
       and(
         eq(documents.id, documentId),
         eq(documents.workspaceId, workspaceId),
-        eq(documents.status, "needs_review"),
+        eq(documents.status, DocumentStatus.NeedsReview),
       ),
     )
     .returning();

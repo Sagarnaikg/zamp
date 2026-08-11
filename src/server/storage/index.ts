@@ -2,9 +2,8 @@ import { diskDriver } from "./disk";
 import { blobDriver } from "./blob";
 
 /**
- * Storage abstraction so the app runs anywhere (decisions.md §14).
- * `put` returns the storagePath persisted on the document row;
- * `get` resolves that same path back to bytes.
+ * Storage abstraction so the app runs anywhere (decisions.md §14). `put`
+ * returns the path persisted on the document row; `get` resolves it back.
  */
 export interface StorageDriver {
   put(key: string, data: Buffer, contentType: string): Promise<string>;

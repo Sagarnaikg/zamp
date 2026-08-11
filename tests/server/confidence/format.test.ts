@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { formatSignal } from "./format";
-import type { Extraction } from "./types";
+import { formatSignal } from "@/server/confidence/format";
+import type { Extraction } from "@/server/confidence/types";
+import { ExpenseCategory } from "@/server/constants";
 
 const TODAY = new Date("2026-08-10T00:00:00Z");
 
@@ -13,7 +14,7 @@ function extraction(overrides: Partial<Extraction> = {}): Extraction {
     subtotal: 100,
     tax: 10,
     total: 110,
-    category: "software",
+    category: ExpenseCategory.Software,
     line_items: [],
     extra_fields: [],
     ...overrides,

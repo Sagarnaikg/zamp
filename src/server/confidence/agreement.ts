@@ -1,15 +1,11 @@
+import { ExtractionField, FindingKind } from "@/server/constants";
 import { type Extraction, type Finding, toCents } from "./types";
 
 /**
  * Independent-reading agreement (decisions.md §8): the document is read
- * twice and the results compared field-by-field — like a second human
- * reviewer checking the first one's work. The second reading is made as
- * independent as the configured keys allow: a different provider when one
- * is available, otherwise the same provider with a different model tier
- * AND a different input modality (vision vs text layer for digital PDFs),
- * so the two readings don't share a single pipeline's blind spots. Where
- * they agree, confidence rises; where they disagree, the user sees both
- * readings.
+ * twice and compared field-by-field. The second reading is made as
+ * independent as the configured keys allow — a different provider when
+ * available, else a different model tier and input modality.
  */
 
 function normText(value: string | null): string | null {
@@ -24,7 +20,7 @@ export function agreementSignal(
   const findings: Finding[] = [];
 
   const compare = (
-    field: string,
+    field: ExtractionField,
     a: unknown,
     b: unknown,
     display: (v: unknown) => string = String,
@@ -33,41 +29,41 @@ export function agreementSignal(
     // is already covered by the missing-field finding.
     if (a === null || b === null) return;
     if (a === b) {
-      findings.push({ field, kind: "confirm" });
+      findings.push({ field, kind: FindingKind.Confirm });
     } else {
       findings.push({
         field,
-        kind: "suspect",
+        kind: FindingKind.Suspect,
         reason: `Two independent readings disagree: one read ${display(a)}, the other ${display(b)}`,
       });
     }
   };
 
-  compare("vendor", normText(primary.vendor), normText(second.vendor), () =>
+  compare(ExtractionField.Vendor, normText(primary.vendor), normText(second.vendor), () =>
     `"${primary.vendor}" vs "${second.vendor}"`.slice(0),
   );
   compare(
-    "invoice_number",
+    ExtractionField.InvoiceNumber,
     normText(primary.invoice_number),
     normText(second.invoice_number),
     () => `"${primary.invoice_number}" vs "${second.invoice_number}"`,
   );
-  compare("doc_date", primary.doc_date, second.doc_date);
+  compare(ExtractionField.DocDate, primary.doc_date, second.doc_date);
   compare(
-    "currency",
+    ExtractionField.Currency,
     primary.currency?.toUpperCase() ?? null,
     second.currency?.toUpperCase() ?? null,
   );
-  compare("subtotal", toCents(primary.subtotal), toCents(second.subtotal), () =>
+  compare(ExtractionField.Subtotal, toCents(primary.subtotal), toCents(second.subtotal), () =>
     `${primary.subtotal} vs ${second.subtotal}`,
   );
-  compare("tax", toCents(primary.tax), toCents(second.tax), () =>
+  compare(ExtractionField.Tax, toCents(primary.tax), toCents(second.tax), () =>
     `${primary.tax} vs ${second.tax}`,
   );
-  compare("total", toCents(primary.total), toCents(second.total), () =>
+  compare(ExtractionField.Total, toCents(primary.total), toCents(second.total), () =>
     `${primary.total} vs ${second.total}`,
   );
-  compare("category", primary.category, second.category);
+  compare(ExtractionField.Category, primary.category, second.category);
 
   return findings;
 }

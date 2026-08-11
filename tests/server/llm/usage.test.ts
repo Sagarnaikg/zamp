@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addUsage, emptyUsage, usageFromResponse } from "./usage";
+import { addUsage, emptyUsage, usageFromResponse } from "@/server/llm/usage";
 
 describe("usageFromResponse", () => {
   it("reads the standard LangChain usage_metadata shape", () => {

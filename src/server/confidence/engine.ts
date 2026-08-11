@@ -1,4 +1,11 @@
 import {
+  CONFIDENCE,
+  DisputeOutcome,
+  ExtractionField,
+  FIELD_REASONS,
+  FindingKind,
+} from "@/server/constants";
+import {
   type DuplicateCandidate,
   type Extraction,
   type FieldMeta,
@@ -12,32 +19,9 @@ import type { ComparableField } from "./compare";
 import { duplicateSignal } from "./duplicates";
 
 /**
- * Combines the independent signals into per-field confidence + reasons
- * (decisions.md §8). Scores are deliberately coarse buckets, not fake
- * precision — what matters to the user is verified / unverified / suspect
- * and the plain-English reason.
+ * Combines the independent signals into per-field confidence and reasons
+ * (decisions.md §8). Scores are coarse buckets, not fake precision.
  */
-
-export const CONFIDENCE = {
-  /** At least one checkable signal contradicts the value. */
-  SUSPECT: 0.3,
-  /** Extracted and plausible, but nothing independently confirms it. */
-  UNVERIFIED: 0.7,
-  /** One independent signal confirms the value. */
-  VERIFIED: 0.9,
-  /** Two or more independent signals agree. */
-  STRONG: 0.98,
-  /** Nothing was extracted. */
-  MISSING: 0,
-} as const;
-
-/**
- * A field below this needs the user's eyes; at or above it renders as clean.
- * Defined as the unverified bucket rather than repeating its value, so the
- * two can't silently drift apart: "extracted and plausible, but nothing
- * corroborates it" is precisely the weakest state we still accept.
- */
-export const REVIEW_THRESHOLD: number = CONFIDENCE.UNVERIFIED;
 
 export interface ConfidenceInput {
   extraction: Extraction;
@@ -59,33 +43,31 @@ export interface ConfidenceResult {
   corrections: Partial<Record<ComparableField, unknown>>;
 }
 
-const TRACKED_FIELDS = [
-  "vendor",
-  "invoice_number",
-  "doc_date",
-  "currency",
-  "subtotal",
-  "tax",
-  "total",
-  "category",
-  "line_items",
-  "duplicate",
-] as const;
+const TRACKED_FIELDS = Object.values(ExtractionField);
+
+/** Score from how many independent signals corroborated the field. */
+function scoreFrom(confirmCount: number): number {
+  if (confirmCount >= 2) return CONFIDENCE.strong;
+  if (confirmCount === 1) return CONFIDENCE.verified;
+  return CONFIDENCE.unverified;
+}
+
+function reasonsOf(findings: Finding[]): string[] {
+  return findings.map((f) => f.reason).filter((r): r is string => !!r);
+}
 
 export function computeConfidence(input: ConfidenceInput): ConfidenceResult {
   const findings: Finding[] = [];
   let disputedFields: ComparableField[] = [];
   let corrections: Partial<Record<ComparableField, unknown>> = {};
 
-  // Resolve disputes first, because majority voting can change values —
-  // and validation must judge the value we are actually going to store,
-  // not the one the first reading proposed.
+  // Disputes resolve first: majority voting can change values, and
+  // validation must judge what we will actually store.
   if (input.secondOpinion) {
     disputedFields = findDisputes(input.extraction, input.secondOpinion);
 
     if (input.tiebreak) {
-      // A third reading has already run: its verdict replaces the raw
-      // disagreement rather than stacking another flag on top of it.
+      // The third reading's verdict replaces the raw disagreement.
       const resolutions = resolveDisputes(
         input.extraction,
         input.secondOpinion,
@@ -95,7 +77,7 @@ export function computeConfidence(input: ConfidenceInput): ConfidenceResult {
       corrections = correctedValues(resolutions);
       const settled = new Set(
         resolutions
-          .filter((r) => r.outcome === "resolved")
+          .filter((r) => r.outcome === DisputeOutcome.Resolved)
           .map((r) => r.field as string),
       );
       // Agreement findings for fields the tiebreaker settled are superseded.
@@ -125,35 +107,26 @@ export function computeConfidence(input: ConfidenceInput): ConfidenceResult {
 
   for (const field of TRACKED_FIELDS) {
     const own = findings.filter((f) => f.field === field);
-    const suspects = own.filter((f) => f.kind === "suspect");
-    const confirms = own.filter((f) => f.kind === "confirm");
-    const missing = own.some((f) => f.kind === "missing");
+    const suspects = own.filter((f) => f.kind === FindingKind.Suspect);
+    const confirms = own.filter((f) => f.kind === FindingKind.Confirm);
+    const missing = own.some((f) => f.kind === FindingKind.Missing);
 
     let confidence: number;
     let reasons: string[];
 
     if (suspects.length > 0) {
-      confidence = CONFIDENCE.SUSPECT;
-      // Include any correction note: "we changed this, and the new value
-      // still looks wrong" is a materially different story from either half.
-      reasons = [...suspects, ...confirms]
-        .map((f) => f.reason)
-        .filter((r): r is string => !!r);
+      // Both halves matter: "we changed this, and it still looks wrong".
+      confidence = CONFIDENCE.suspect;
+      reasons = reasonsOf([...suspects, ...confirms]);
       flaggedCount++;
     } else if (missing) {
-      confidence = CONFIDENCE.MISSING;
-      reasons = ["Not found in the document"];
+      confidence = CONFIDENCE.missing;
+      reasons = [FIELD_REASONS.notFound];
     } else {
-      // A confirmation usually needs no explanation, but the tiebreaker's
-      // does: silently rewriting a value the user never saw disputed is the
-      // opposite of the transparency this product is for.
-      reasons = confirms.map((f) => f.reason).filter((r): r is string => !!r);
-      confidence =
-        confirms.length >= 2
-          ? CONFIDENCE.STRONG
-          : confirms.length === 1
-            ? CONFIDENCE.VERIFIED
-            : CONFIDENCE.UNVERIFIED;
+      // Confirmations are usually silent, but a tiebreaker correction must
+      // be visible — rewriting a value the user never saw disputed isn't.
+      confidence = scoreFrom(confirms.length);
+      reasons = reasonsOf(confirms);
     }
 
     fieldMeta[field] = { confidence, reasons };

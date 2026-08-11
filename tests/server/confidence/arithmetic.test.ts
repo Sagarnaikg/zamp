@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { arithmeticSignal } from "./arithmetic";
-import type { Extraction } from "./types";
+import { arithmeticSignal } from "@/server/confidence/arithmetic";
+import type { Extraction } from "@/server/confidence/types";
+import { ExpenseCategory } from "@/server/constants";
 
 function invoice(overrides: Partial<Extraction> = {}): Extraction {
   return {
@@ -11,7 +12,7 @@ function invoice(overrides: Partial<Extraction> = {}): Extraction {
     subtotal: 760,
     tax: 76,
     total: 836,
-    category: "software",
+    category: ExpenseCategory.Software,
     line_items: [
       { description: "Hosting", quantity: 1, unit_price: 420, amount: 420 },
       { description: "Storage", quantity: 2, unit_price: 95, amount: 190 },

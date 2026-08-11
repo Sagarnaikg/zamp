@@ -21,6 +21,7 @@ import {
   type QueryDsl,
   type QueryFilter,
 } from "@/server/llm/query-translate";
+import { DocumentStatus, QueryAggregate, QueryField, QueryOperator } from "@/server/constants";
 
 /**
  * The ledger is accepted documents only — every number in it has been
@@ -45,7 +46,7 @@ const ledgerColumns = {
 function baseCondition(workspaceId: string): SQL {
   return and(
     eq(extractions.workspaceId, workspaceId),
-    eq(documents.status, "accepted"),
+    eq(documents.status, DocumentStatus.Accepted),
   )!;
 }
 
@@ -66,7 +67,7 @@ async function availableExtraKeys(workspaceId: string): Promise<string[]> {
     JOIN documents ON documents.id = extractions.document_id
     CROSS JOIN LATERAL jsonb_array_elements(extractions.extra_fields) AS ef
     WHERE extractions.workspace_id = ${workspaceId}
-      AND documents.status = 'accepted'
+      AND documents.status = ${DocumentStatus.Accepted}
     ORDER BY key
   `);
   return (result.rows as Array<{ key: string }>).map((r) => r.key);
@@ -82,11 +83,11 @@ function extraFieldCondition(filter: QueryFilter): SQL | null {
   const key = canonicalKey(filter.key);
   const match = sql`SELECT 1 FROM jsonb_array_elements(${extractions.extraFields}) AS ef WHERE ef->>'key' = ${key}`;
   switch (filter.op) {
-    case "exists":
+    case QueryOperator.Exists:
       return sql`EXISTS (${match})`;
-    case "eq":
+    case QueryOperator.Eq:
       return sql`EXISTS (${match} AND lower(ef->>'value') = lower(${filter.value}))`;
-    case "contains":
+    case QueryOperator.Contains:
       return sql`EXISTS (${match} AND ef->>'value' ILIKE ${"%" + filter.value + "%"})`;
     default:
       // gte/lte over free-text values would compare strings, not amounts —
@@ -98,33 +99,44 @@ function extraFieldCondition(filter: QueryFilter): SQL | null {
 /** Map one allow-listed DSL filter onto a typed column condition. */
 function filterToCondition(filter: QueryFilter): SQL | null {
   switch (filter.field) {
-    case "vendor":
-      return filter.op === "contains"
+    case QueryField.Vendor:
+      return filter.op === QueryOperator.Contains
         ? ilike(extractions.vendor, `%${filter.value}%`)
         : ilike(extractions.vendor, filter.value);
-    case "invoice_number":
-      return filter.op === "contains"
+    case QueryField.InvoiceNumber:
+      return filter.op === QueryOperator.Contains
         ? ilike(extractions.invoiceNumber, `%${filter.value}%`)
         : ilike(extractions.invoiceNumber, filter.value);
-    case "category":
+    case QueryField.Category:
       return eq(extractions.category, filter.value.toLowerCase());
-    case "currency":
+    case QueryField.Currency:
       return eq(extractions.currency, filter.value.toUpperCase());
-    case "doc_date": {
+    case QueryField.DocDate: {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(filter.value)) return null;
-      if (filter.op === "gte") return gte(extractions.docDate, filter.value);
-      if (filter.op === "lte") return lte(extractions.docDate, filter.value);
+      if (filter.op === QueryOperator.Gte) return gte(extractions.docDate, filter.value);
+      if (filter.op === QueryOperator.Lte) return lte(extractions.docDate, filter.value);
       return eq(extractions.docDate, filter.value);
     }
-    case "total": {
+    case QueryField.Total: {
       const value = parseFloat(filter.value);
       if (isNaN(value)) return null;
-      if (filter.op === "gte") return gte(extractions.total, String(value));
-      if (filter.op === "lte") return lte(extractions.total, String(value));
+      if (filter.op === QueryOperator.Gte) return gte(extractions.total, String(value));
+      if (filter.op === QueryOperator.Lte) return lte(extractions.total, String(value));
       return eq(extractions.total, String(value));
     }
-    case "extra":
+    case QueryField.Extra:
       return extraFieldCondition(filter);
+  }
+}
+
+function aggregateExpr(aggregate: QueryDsl["aggregate"]) {
+  switch (aggregate) {
+    case QueryAggregate.SumTotal:
+      return sum(extractions.total);
+    case QueryAggregate.AvgTotal:
+      return avg(extractions.total);
+    default:
+      return count();
   }
 }
 
@@ -167,13 +179,8 @@ export async function runQuery(
     .orderBy(desc(extractions.docDate), asc(documents.filename));
 
   let value: number | null = null;
-  if (dsl.aggregate !== "none") {
-    const aggExpr =
-      dsl.aggregate === "sum_total"
-        ? sum(extractions.total)
-        : dsl.aggregate === "avg_total"
-          ? avg(extractions.total)
-          : count();
+  if (dsl.aggregate !== QueryAggregate.None) {
+    const aggExpr = aggregateExpr(dsl.aggregate);
     const [result] = await db
       .select({ value: aggExpr })
       .from(extractions)

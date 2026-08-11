@@ -1,47 +1,52 @@
+import { ExtractionField } from "@/server/constants";
 import { toCents } from "./types";
 
 /**
- * Field-aware value comparison, shared by the agreement signal and the
- * tiebreaker so both judge "same reading" identically. Comparison is
- * normalized per field type: "ACME CLOUD, INC" and "Acme Cloud Inc." are
- * the same vendor; 836 and 836.00 are the same amount.
+ * Field-aware comparison shared by the agreement signal and the tiebreaker,
+ * so both judge "same reading" identically: "ACME CLOUD, INC" and "Acme
+ * Cloud Inc." are the same vendor; 836 and 836.00 are the same amount.
  */
 
 /** Fields that two independent readings are compared on. */
+/** Fields two independent readings are compared on. */
 export const COMPARABLE_FIELDS = [
-  "vendor",
-  "invoice_number",
-  "doc_date",
-  "currency",
-  "subtotal",
-  "tax",
-  "total",
-  "category",
+  ExtractionField.Vendor,
+  ExtractionField.InvoiceNumber,
+  ExtractionField.DocDate,
+  ExtractionField.Currency,
+  ExtractionField.Subtotal,
+  ExtractionField.Tax,
+  ExtractionField.Total,
+  ExtractionField.Category,
 ] as const;
 
 export type ComparableField = (typeof COMPARABLE_FIELDS)[number];
 
 /** Amount fields — compared numerically, and checked together elsewhere. */
-export const MONEY_FIELDS = ["subtotal", "tax", "total"] as const;
+export const MONEY_FIELDS = [
+  ExtractionField.Subtotal,
+  ExtractionField.Tax,
+  ExtractionField.Total,
+] as const;
 
 const MONEY_FIELD_SET = new Set<string>(MONEY_FIELDS);
-const TEXT_FIELDS = new Set<string>(["vendor", "invoice_number"]);
+const TEXT_FIELD_SET = new Set<string>([
+  ExtractionField.Vendor,
+  ExtractionField.InvoiceNumber,
+]);
 
 /** Reduce a value to the form used for equality checks. */
 function normalizeValue(field: string, value: unknown): unknown {
   if (value === null || value === undefined) return null;
   if (MONEY_FIELD_SET.has(field)) return toCents(value as number);
-  if (TEXT_FIELDS.has(field)) {
+  if (TEXT_FIELD_SET.has(field)) {
     return String(value).toLowerCase().replace(/[^a-z0-9]/g, "") || null;
   }
-  if (field === "currency") return String(value).toUpperCase();
+  if (field === ExtractionField.Currency) return String(value).toUpperCase();
   return value;
 }
 
-/**
- * Do two readings agree on this field? `null` means "can't tell" — one side
- * didn't produce a value, which is a missing-field problem, not a conflict.
- */
+/** `null` means "can't tell" — a missing value, not a conflict. */
 export function valuesMatch(
   field: string,
   a: unknown,

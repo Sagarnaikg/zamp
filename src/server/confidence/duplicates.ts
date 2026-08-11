@@ -1,3 +1,4 @@
+import { ExtractionField, FindingKind } from "@/server/constants";
 import {
   type DuplicateCandidate,
   type Extraction,
@@ -45,8 +46,8 @@ export function duplicateSignal(
       return {
         findings: [
           {
-            field: "duplicate",
-            kind: "suspect",
+            field: ExtractionField.Duplicate,
+            kind: FindingKind.Suspect,
             reason: sameVendor
               ? `Same invoice number and vendor as "${candidate.filename}" — this looks like a duplicate upload`
               : `Invoice number matches "${candidate.filename}" — possible duplicate`,
@@ -69,8 +70,8 @@ export function duplicateSignal(
       return {
         findings: [
           {
-            field: "duplicate",
-            kind: "suspect",
+            field: ExtractionField.Duplicate,
+            kind: FindingKind.Suspect,
             reason: `Same vendor, amount, and date as "${candidate.filename}" — possible duplicate`,
           },
         ],
@@ -80,7 +81,7 @@ export function duplicateSignal(
   }
 
   return {
-    findings: [{ field: "duplicate", kind: "confirm" }],
+    findings: [{ field: ExtractionField.Duplicate, kind: FindingKind.Confirm }],
     matchedDocumentId: null,
   };
 }

@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/server/db";
-import { documents, extractions, lineItems } from "@/server/db/schema";
+import { documents, extractions, lineItems, type TokenUsage } from "@/server/db/schema";
 import { getStorage } from "@/server/storage";
-import { detectFileKind, type FileKind } from "@/server/ingest/detect";
+import { detectFileKind } from "@/server/ingest/detect";
 import { PipelineTrace } from "@/server/ingest/trace";
 import {
   extract,
@@ -11,15 +11,24 @@ import {
   type Extraction,
 } from "@/server/llm/extraction";
 import { classifyLlmError } from "@/server/llm/errors";
-import { addUsage, emptyUsage, type TokenUsage } from "@/server/llm/usage";
+import { addUsage, emptyUsage } from "@/server/llm/usage";
 import {
-  CONFIDENCE,
-  REVIEW_THRESHOLD,
   computeConfidence,
   type ConfidenceResult,
 } from "@/server/confidence/engine";
 import { needsSecondReading } from "@/server/confidence/policy";
 import type { DuplicateCandidate } from "@/server/confidence/types";
+import {
+  CONFIDENCE,
+  DocumentStatus,
+  FILE_KIND_DETAILS,
+  FileKind,
+  LLM_ERROR_MESSAGES,
+  PIPELINE_DETAILS,
+  PipelineStageKey,
+  Provider,
+  REVIEW_THRESHOLD,
+} from "@/server/constants";
 
 /**
  * Document ingestion (decisions.md §8, §20, §21).
@@ -44,12 +53,12 @@ import type { DuplicateCandidate } from "@/server/confidence/types";
 async function secondOpinion(
   kind: FileKind,
   file: { data: Buffer; mimeType: string; text?: string; filename?: string },
-  primaryProvider: string,
+  primaryProvider: Provider,
 ) {
   try {
     return await extract(kind, file, {
       secondOpinion: true,
-      avoid: primaryProvider as never,
+      avoid: primaryProvider,
     });
   } catch {
     return null;
@@ -63,11 +72,11 @@ async function secondOpinion(
 async function focusedRecheck(
   fields: readonly string[],
   file: { data: Buffer; mimeType: string; filename?: string },
-  primaryProvider: string,
+  primaryProvider: Provider,
 ) {
   try {
     return await extractFocused(fields, file, {
-      avoid: primaryProvider as never,
+      avoid: primaryProvider,
     });
   } catch {
     return null;
@@ -99,7 +108,7 @@ async function duplicateCandidates(
       and(
         eq(extractions.workspaceId, workspaceId),
         ne(extractions.documentId, excludeDocumentId),
-        inArray(documents.status, ["needs_review", "accepted"]),
+        inArray(documents.status, [DocumentStatus.NeedsReview, DocumentStatus.Accepted]),
       ),
     );
 }
@@ -107,16 +116,12 @@ async function duplicateCandidates(
 function describeValidation(confidence: ConfidenceResult): string {
   const meta = Object.values(confidence.fieldMeta);
   const corroborated = meta.filter(
-    (m) => m.confidence >= CONFIDENCE.VERIFIED,
+    (m) => m!.confidence >= CONFIDENCE.verified,
   ).length;
   const contradicted = meta.filter(
-    (m) => m.confidence < REVIEW_THRESHOLD,
+    (m) => m!.confidence < REVIEW_THRESHOLD,
   ).length;
-  const parts = [
-    `${corroborated} field${corroborated === 1 ? "" : "s"} corroborated by arithmetic and format checks`,
-  ];
-  if (contradicted > 0) parts.push(`${contradicted} contradicted`);
-  return parts.join(", ");
+  return PIPELINE_DETAILS.validated(corroborated, contradicted);
 }
 
 interface VerificationInput {
@@ -124,7 +129,7 @@ interface VerificationInput {
   documentId: string;
   kind: FileKind;
   extraction: Extraction;
-  provider: string;
+  provider: Provider;
   file: { data: Buffer; mimeType: string; text?: string; filename?: string };
   trace: PipelineTrace;
 }
@@ -155,7 +160,7 @@ async function verifyExtraction({
     extraction,
     duplicateCandidates: candidates,
   });
-  trace.ok("validate", t, { detail: describeValidation(confidence) });
+  trace.ok(PipelineStageKey.Validate, t, { detail: describeValidation(confidence) });
 
   // Rung 2: a second independent reading, if the cheap checks left doubt.
   let second: Extraction | null = null;
@@ -170,38 +175,40 @@ async function verifyExtraction({
         secondOpinion: second,
         duplicateCandidates: candidates,
       });
-      trace.ok("second_reading", t, {
+      trace.ok(PipelineStageKey.SecondReading, t, {
         detail:
           reading.provider === provider
-            ? "Same provider, different model and input format — an independent look"
-            : `Independent reading from a different provider (${reading.provider})`,
+            ? PIPELINE_DETAILS.secondReadingSameProvider
+            : PIPELINE_DETAILS.secondReadingCrossProvider(reading.provider),
         provider: reading.provider,
         model: reading.modelId,
         usage: reading.usage,
       });
     } else {
       trace.failed(
-        "second_reading",
+        PipelineStageKey.SecondReading,
         t,
-        "Second reading failed; relying on the remaining signals",
+        PIPELINE_DETAILS.secondReadingFailed,
       );
     }
   } else {
     trace.skipped(
-      "second_reading",
-      "Skipped — the document's own arithmetic reconciles and the text layer is exact, so a second opinion would add cost without adding evidence",
+      PipelineStageKey.SecondReading,
+      PIPELINE_DETAILS.secondReadingSkipped,
     );
   }
 
   if (second) {
-    trace.ok("compare", trace.begin(), {
+    trace.ok(PipelineStageKey.Compare, trace.begin(), {
       detail:
         confidence.disputedFields.length === 0
-          ? "Both readings agree on every field"
-          : `Readings disagree on: ${confidence.disputedFields.join(", ")}`,
+          ? PIPELINE_DETAILS.readingsAgree
+          : PIPELINE_DETAILS.readingsDisagree(
+              confidence.disputedFields.join(", "),
+            ),
     });
   } else {
-    trace.skipped("compare", "Nothing to compare — only one reading was taken");
+    trace.skipped(PipelineStageKey.Compare, PIPELINE_DETAILS.compareSkipped);
   }
 
   // Rung 3: re-read just the disputed fields and let majority voting settle
@@ -219,41 +226,38 @@ async function verifyExtraction({
         duplicateCandidates: candidates,
       });
       const corrected = Object.keys(confidence.corrections);
-      trace.ok("tiebreak", t, {
-        detail: `Re-read ${disputed.join(", ")} on their own. ${
-          corrected.length > 0
-            ? `Majority vote corrected: ${corrected.join(", ")}`
-            : "Majority vote kept the first reading"
-        }`,
+      const fields = disputed.join(", ");
+      const tiebreakDetail =
+        corrected.length > 0
+          ? PIPELINE_DETAILS.tiebreakCorrected(fields, corrected.join(", "))
+          : PIPELINE_DETAILS.tiebreakKept(fields);
+      trace.ok(PipelineStageKey.Tiebreak, t, {
+        detail: tiebreakDetail,
         usage: tiebreak.usage,
       });
     } else {
-      trace.failed(
-        "tiebreak",
-        t,
-        "Focused re-read failed; disputed fields go to review",
-      );
+      trace.failed(PipelineStageKey.Tiebreak, t, PIPELINE_DETAILS.tiebreakFailed);
     }
   } else {
     trace.skipped(
-      "tiebreak",
+      PipelineStageKey.Tiebreak,
       second
-        ? "Not needed — the readings already agree"
-        : "Not applicable — only one reading was taken",
+        ? PIPELINE_DETAILS.tiebreakNotNeeded
+        : PIPELINE_DETAILS.tiebreakNotApplicable,
     );
   }
 
-  trace.ok("duplicates", trace.begin(), {
+  trace.ok(PipelineStageKey.Duplicates, trace.begin(), {
     detail: confidence.matchedDuplicateId
-      ? "Matches a document already in this workspace"
-      : `Compared against ${candidates.length} existing document${candidates.length === 1 ? "" : "s"} — no match`,
+      ? PIPELINE_DETAILS.duplicateFound
+      : PIPELINE_DETAILS.duplicateNone(candidates.length),
   });
 
-  trace.ok("score", trace.begin(), {
+  trace.ok(PipelineStageKey.Score, trace.begin(), {
     detail:
       confidence.flaggedCount === 0
-        ? "Every field passed — nothing needs your attention"
-        : `${confidence.flaggedCount} field${confidence.flaggedCount === 1 ? "" : "s"} flagged for review`,
+        ? PIPELINE_DETAILS.scoreClean
+        : PIPELINE_DETAILS.scoreFlagged(confidence.flaggedCount),
   });
 
   return { confidence, usage };
@@ -320,12 +324,6 @@ async function persistExtraction(
 // Orchestration
 // ---------------------------------------------------------------------------
 
-const KIND_DETAIL: Record<FileKind, string> = {
-  digital_pdf: "Digital PDF — has a text layer, so the text can be read exactly",
-  scanned_pdf: "Scanned PDF — no text layer, needs a vision model",
-  image: "Image — needs a vision model",
-};
-
 /**
  * Detect → read → verify → persist, for a document whose file is already
  * stored. Shared by upload and retry, so a transient provider failure never
@@ -337,21 +335,26 @@ async function processDocument(
   file: { type: string; data: Buffer; name: string },
 ) {
   const trace = new PipelineTrace();
-  trace.ok("store", trace.begin(), {
-    detail: `${file.name} (${(file.data.length / 1024).toFixed(0)} KB) saved to ${
-      process.env.BLOB_READ_WRITE_TOKEN ? "blob storage" : "local disk"
-    }`,
+  const storageTarget = process.env.BLOB_READ_WRITE_TOKEN
+    ? PIPELINE_DETAILS.storageBlob
+    : PIPELINE_DETAILS.storageDisk;
+  trace.ok(PipelineStageKey.Store, trace.begin(), {
+    detail: PIPELINE_DETAILS.stored(
+      file.name,
+      (file.data.length / 1024).toFixed(0),
+      storageTarget,
+    ),
   });
 
   try {
     let t = trace.begin();
     const { kind, text } = await detectFileKind(file.data, file.type);
-    trace.ok("detect", t, { detail: KIND_DETAIL[kind] });
+    trace.ok(PipelineStageKey.Detect, t, { detail: FILE_KIND_DETAILS[kind] });
     await db
       .update(documents)
       .set({
         fileKind: kind,
-        status: "processing",
+        status: DocumentStatus.Processing,
         error: null,
         updatedAt: new Date(),
       })
@@ -366,12 +369,12 @@ async function processDocument(
 
     t = trace.begin();
     const result = await extract(kind, fileInput);
-    if (!result) throw new Error("No extraction result returned");
-    trace.ok("extract", t, {
+    if (!result) throw new Error(LLM_ERROR_MESSAGES.noExtractionResult);
+    trace.ok(PipelineStageKey.Extract, t, {
       detail:
-        kind === "digital_pdf"
-          ? "Read the PDF's text layer"
-          : "Read the document visually",
+        kind === FileKind.DigitalPdf
+          ? PIPELINE_DETAILS.readTextLayer
+          : PIPELINE_DETAILS.readVisually,
       provider: result.provider,
       model: result.modelId,
       usage: result.usage,
@@ -398,7 +401,7 @@ async function processDocument(
     const [updated] = await db
       .update(documents)
       .set({
-        status: "needs_review",
+        status: DocumentStatus.NeedsReview,
         pipeline: trace.toJSON(),
         updatedAt: new Date(),
       })
@@ -407,11 +410,11 @@ async function processDocument(
     return { document: updated };
   } catch (err) {
     const { message, retryable, kind } = classifyLlmError(err);
-    trace.failed("score", trace.begin(), message);
+    trace.failed(PipelineStageKey.Score, trace.begin(), message);
     const [failed] = await db
       .update(documents)
       .set({
-        status: "failed",
+        status: DocumentStatus.Failed,
         error: message,
         pipeline: trace.toJSON(),
         updatedAt: new Date(),
@@ -451,7 +454,7 @@ export async function ingestDocument(
       filename: file.name,
       mimeType: file.type,
       storagePath,
-      status: "processing",
+      status: DocumentStatus.Processing,
     })
     .returning();
 

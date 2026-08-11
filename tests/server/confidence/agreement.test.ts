@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { agreementSignal } from "./agreement";
-import type { Extraction } from "./types";
+import { agreementSignal } from "@/server/confidence/agreement";
+import type { Extraction } from "@/server/confidence/types";
+import { ExpenseCategory } from "@/server/constants";
 
 function extraction(overrides: Partial<Extraction> = {}): Extraction {
   return {
@@ -11,7 +12,7 @@ function extraction(overrides: Partial<Extraction> = {}): Extraction {
     subtotal: 760,
     tax: 76,
     total: 836,
-    category: "software",
+    category: ExpenseCategory.Software,
     line_items: [],
     extra_fields: [],
     ...overrides,
@@ -48,7 +49,7 @@ describe("agreementSignal", () => {
   it("compares category so a misclassification is caught, not silently trusted", () => {
     const findings = agreementSignal(
       extraction(),
-      extraction({ category: "meals" }),
+      extraction({ category: ExpenseCategory.Meals }),
     );
     const categoryFindings = findings.filter((f) => f.field === "category");
     expect(categoryFindings).toHaveLength(1);

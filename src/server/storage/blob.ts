@@ -6,8 +6,7 @@ export const blobDriver: StorageDriver = {
     const blob = await put(key, data, {
       access: "public",
       contentType,
-      // The random suffix is the only access control without auth; the URL
-      // is unguessable and only ever surfaced inside the owning workspace.
+      // Unguessable URL is the only access control without auth.
       addRandomSuffix: true,
     });
     return blob.url;

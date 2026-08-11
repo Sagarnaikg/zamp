@@ -97,6 +97,7 @@ src/
 ├── components/        # Frontend layer — reusable React components
 ├── server/            # Backend layer — never imported by client code
 │   ├── services/      #   Business logic / use-cases (ingestion, review, query)
+│   ├── constants/     #   Enums + config + user-facing messages, single source of truth
 │   ├── db/            #   Drizzle schema + client + SQL migrations
 │   ├── storage/       #   File storage drivers (local disk / Vercel Blob)
 │   ├── llm/           #   ML layer: model router, extraction, query translation
@@ -104,6 +105,7 @@ src/
 │   └── confidence/    #   Field-level confidence engine (signals + reasons)
 └── middleware.ts      # Anonymous per-browser workspace cookie
 
+tests/                 # Unit tests, mirroring the src/ tree (e.g. tests/server/llm/errors.test.ts)
 samples/               # Test/demo documents with known planted problems
 scripts/               # Dev tooling (sample document generation)
 ```

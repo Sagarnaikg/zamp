@@ -15,7 +15,7 @@
  *    too, where we can't redact pixels before the model reads them).
  */
 
-export type SensitiveKind = "card" | "iban";
+import { SensitiveKind } from "@/server/constants";
 
 export interface RedactionMatch {
   kind: SensitiveKind;
@@ -88,14 +88,14 @@ export function redactSensitive(text: string): RedactionResult {
       return candidate;
     }
     const masked = maskCard(digits);
-    matches.push({ kind: "card", masked });
+    matches.push({ kind: SensitiveKind.Card, masked });
     return masked;
   });
 
   result = result.replace(IBAN_CANDIDATE, (candidate) => {
     if (!ibanValid(candidate)) return candidate;
     const masked = maskIban(candidate);
-    matches.push({ kind: "iban", masked });
+    matches.push({ kind: SensitiveKind.Iban, masked });
     return masked;
   });
 

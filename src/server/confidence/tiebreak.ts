@@ -1,3 +1,4 @@
+import { DisputeOutcome, FindingKind } from "@/server/constants";
 import { type Extraction, type Finding } from "./types";
 import {
   COMPARABLE_FIELDS,
@@ -7,20 +8,10 @@ import {
 } from "./compare";
 
 /**
- * Targeted re-extraction tiebreaker (decisions.md §20).
- *
- * When two readings disagree on a field, ask a third time — focused on just
- * the disputed fields — before spending a human's attention. The third read
- * is deliberately *blind*: it is never shown the two candidate values, so it
- * can't be anchored into rubber-stamping one. Majority then decides:
- * 2-of-3 resolves the field, 3 different answers means it is genuinely
- * ambiguous and a person should look.
+ * Targeted re-extraction tiebreaker (decisions.md §20). The third read is
+ * blind — never shown the two candidates — so it can't be anchored into
+ * rubber-stamping one. 2-of-3 resolves; three answers means a human looks.
  */
-
-export type DisputeOutcome =
-  | "resolved" // tiebreaker matched one of the two candidates
-  | "unresolved" // three different readings
-  | "abstained"; // tiebreaker produced nothing for this field
 
 export interface DisputeResolution {
   field: ComparableField;
@@ -62,10 +53,10 @@ export function resolveDisputes(
     if (thirdValue === null || thirdValue === undefined) {
       return {
         ...base,
-        outcome: "abstained" as const,
+        outcome: DisputeOutcome.Abstained,
         finding: {
           field,
-          kind: "suspect",
+          kind: FindingKind.Suspect,
           reason: `Two readings disagree (${displayValue(primaryValue)} vs ${displayValue(secondValue)}) and a focused re-read could not find this field — please confirm it`,
         },
       };
@@ -74,12 +65,12 @@ export function resolveDisputes(
     if (valuesMatch(field, thirdValue, primaryValue)) {
       return {
         field,
-        outcome: "resolved" as const,
+        outcome: DisputeOutcome.Resolved,
         winner: primaryValue,
         correctsPrimary: false,
         finding: {
           field,
-          kind: "confirm",
+          kind: FindingKind.Confirm,
           reason: `A focused re-read agreed with ${displayValue(primaryValue)} over ${displayValue(secondValue)} (2 of 3 readings)`,
         },
       };
@@ -88,13 +79,13 @@ export function resolveDisputes(
     if (valuesMatch(field, thirdValue, secondValue)) {
       return {
         field,
-        outcome: "resolved" as const,
+        outcome: DisputeOutcome.Resolved,
         winner: secondValue,
         // The first reading was wrong; the value we store gets corrected.
         correctsPrimary: true,
         finding: {
           field,
-          kind: "confirm",
+          kind: FindingKind.Confirm,
           reason: `Corrected to ${displayValue(secondValue)} — a focused re-read agreed with the second reading (2 of 3)`,
         },
       };
@@ -102,10 +93,10 @@ export function resolveDisputes(
 
     return {
       ...base,
-      outcome: "unresolved" as const,
+      outcome: DisputeOutcome.Unresolved,
       finding: {
         field,
-        kind: "suspect",
+        kind: FindingKind.Suspect,
         reason: `Three readings, three different values (${displayValue(primaryValue)}, ${displayValue(secondValue)}, ${displayValue(thirdValue)}) — this field needs your eyes`,
       },
     };
@@ -118,7 +109,7 @@ export function correctedValues(
 ): Partial<Record<ComparableField, unknown>> {
   const corrections: Partial<Record<ComparableField, unknown>> = {};
   for (const resolution of resolutions) {
-    if (resolution.outcome === "resolved" && resolution.correctsPrimary) {
+    if (resolution.outcome === DisputeOutcome.Resolved && resolution.correctsPrimary) {
       corrections[resolution.field] = resolution.winner;
     }
   }

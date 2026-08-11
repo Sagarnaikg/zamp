@@ -1,3 +1,9 @@
+import {
+  EXTRACTION,
+  ExtractionField,
+  FIELD_REASONS,
+  FindingKind,
+} from "@/server/constants";
 import { type Extraction, type Finding } from "./types";
 import { MONEY_FIELDS } from "./compare";
 
@@ -13,8 +19,7 @@ const ISO_CURRENCIES = new Set([
   "KRW", "THB", "MYR", "IDR", "PHP", "VND", "PLN", "CZK", "TRY", "ILS",
 ]);
 
-/** How far in the past a document date stays plausible. */
-const MAX_AGE_YEARS = 20;
+
 
 export function formatSignal(
   extraction: Extraction,
@@ -23,22 +28,22 @@ export function formatSignal(
   const findings: Finding[] = [];
 
   // Missing core fields: not "wrong", but the user should know we found nothing.
-  const core: Array<[string, unknown]> = [
-    ["vendor", extraction.vendor],
-    ["invoice_number", extraction.invoice_number],
-    ["doc_date", extraction.doc_date],
-    ["currency", extraction.currency],
-    ["subtotal", extraction.subtotal],
-    ["tax", extraction.tax],
-    ["total", extraction.total],
-    ["category", extraction.category],
+  const core: Array<[ExtractionField, unknown]> = [
+    [ExtractionField.Vendor, extraction.vendor],
+    [ExtractionField.InvoiceNumber, extraction.invoice_number],
+    [ExtractionField.DocDate, extraction.doc_date],
+    [ExtractionField.Currency, extraction.currency],
+    [ExtractionField.Subtotal, extraction.subtotal],
+    [ExtractionField.Tax, extraction.tax],
+    [ExtractionField.Total, extraction.total],
+    [ExtractionField.Category, extraction.category],
   ];
   for (const [field, value] of core) {
     if (value === null || value === undefined) {
       findings.push({
         field,
-        kind: "missing",
-        reason: "Not found in the document",
+        kind: FindingKind.Missing,
+        reason: FIELD_REASONS.notFound,
       });
     }
   }
@@ -47,29 +52,29 @@ export function formatSignal(
     const parsed = new Date(extraction.doc_date + "T00:00:00Z");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(extraction.doc_date) || isNaN(+parsed)) {
       findings.push({
-        field: "doc_date",
-        kind: "suspect",
+        field: ExtractionField.DocDate,
+        kind: FindingKind.Suspect,
         reason: `Date "${extraction.doc_date}" is not a valid YYYY-MM-DD date`,
       });
     } else {
       const tomorrow = new Date(today);
       tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
       const oldest = new Date(today);
-      oldest.setUTCFullYear(oldest.getUTCFullYear() - MAX_AGE_YEARS);
+      oldest.setUTCFullYear(oldest.getUTCFullYear() - EXTRACTION.maxDocumentAgeYears);
       if (parsed > tomorrow) {
         findings.push({
-          field: "doc_date",
-          kind: "suspect",
+          field: ExtractionField.DocDate,
+          kind: FindingKind.Suspect,
           reason: `Date ${extraction.doc_date} is in the future`,
         });
       } else if (parsed < oldest) {
         findings.push({
-          field: "doc_date",
-          kind: "suspect",
-          reason: `Date ${extraction.doc_date} is over ${MAX_AGE_YEARS} years old — likely misread`,
+          field: ExtractionField.DocDate,
+          kind: FindingKind.Suspect,
+          reason: `Date ${extraction.doc_date} is over ${EXTRACTION.maxDocumentAgeYears} years old — likely misread`,
         });
       } else {
-        findings.push({ field: "doc_date", kind: "confirm" });
+        findings.push({ field: ExtractionField.DocDate, kind: FindingKind.Confirm });
       }
     }
   }
@@ -77,12 +82,12 @@ export function formatSignal(
   if (extraction.currency !== null) {
     if (!ISO_CURRENCIES.has(extraction.currency.toUpperCase())) {
       findings.push({
-        field: "currency",
-        kind: "suspect",
+        field: ExtractionField.Currency,
+        kind: FindingKind.Suspect,
         reason: `"${extraction.currency}" is not a recognized ISO currency code`,
       });
     } else {
-      findings.push({ field: "currency", kind: "confirm" });
+      findings.push({ field: ExtractionField.Currency, kind: FindingKind.Confirm });
     }
   }
 
@@ -91,7 +96,7 @@ export function formatSignal(
     if (value !== null && value < 0) {
       findings.push({
         field,
-        kind: "suspect",
+        kind: FindingKind.Suspect,
         reason: `${field} is negative (${value}) — credit notes aren't supported, so this is likely a misread`,
       });
     }
@@ -104,8 +109,8 @@ export function formatSignal(
     extraction.tax > extraction.subtotal
   ) {
     findings.push({
-      field: "tax",
-      kind: "suspect",
+      field: ExtractionField.Tax,
+      kind: FindingKind.Suspect,
       reason: `Tax (${extraction.tax}) is larger than the subtotal (${extraction.subtotal}) — very unusual`,
     });
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { classifyLlmError, withRetry } from "./errors";
+import { classifyLlmError, withRetry } from "@/server/llm/errors";
 
 describe("classifyLlmError", () => {
   it("treats a rate limit as retryable and explains the wait", () => {

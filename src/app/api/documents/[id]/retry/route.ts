@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspaceId } from "@/server/workspace";
 import { retryDocument } from "@/server/services/documents";
+import { API_MESSAGES, HTTP_STATUS, TIMEOUTS } from "@/server/constants";
 
 // Re-runs extraction, same cost profile as the original upload.
-export const maxDuration = 60;
+export const maxDuration = TIMEOUTS.extractionRouteSeconds;
 
 export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const workspaceId = await getWorkspaceId();
@@ -11,10 +12,13 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
 
   const result = await retryDocument(workspaceId, id);
   if (!result) {
-    return NextResponse.json({ error: "Document not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: API_MESSAGES.documentNotFound },
+      { status: HTTP_STATUS.notFound },
+    );
   }
   if (result.error) {
-    return NextResponse.json(result, { status: 502 });
+    return NextResponse.json(result, { status: HTTP_STATUS.badGateway });
   }
   return NextResponse.json(result);
 }

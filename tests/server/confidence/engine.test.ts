@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { CONFIDENCE, computeConfidence } from "./engine";
-import type { Extraction } from "./types";
+import { computeConfidence } from "@/server/confidence/engine";
+import { CONFIDENCE, ExpenseCategory } from "@/server/constants";
+import type { Extraction } from "@/server/confidence/types";
 
 const TODAY = new Date("2026-08-10T00:00:00Z");
 
@@ -13,7 +14,7 @@ function extraction(overrides: Partial<Extraction> = {}): Extraction {
     subtotal: 760,
     tax: 76,
     total: 836,
-    category: "software",
+    category: ExpenseCategory.Software,
     line_items: [
       { description: "Hosting", quantity: 1, unit_price: 420, amount: 420 },
       { description: "Storage", quantity: 2, unit_price: 95, amount: 190 },
@@ -32,14 +33,14 @@ describe("computeConfidence", () => {
     });
     expect(flaggedCount).toBe(0);
     // Math confirms these.
-    expect(fieldMeta.subtotal.confidence).toBeGreaterThanOrEqual(
-      CONFIDENCE.VERIFIED,
+    expect(fieldMeta.subtotal!.confidence).toBeGreaterThanOrEqual(
+      CONFIDENCE.verified,
     );
-    expect(fieldMeta.total.confidence).toBeGreaterThanOrEqual(
-      CONFIDENCE.VERIFIED,
+    expect(fieldMeta.total!.confidence).toBeGreaterThanOrEqual(
+      CONFIDENCE.verified,
     );
     // Nothing can independently confirm the vendor with one model.
-    expect(fieldMeta.vendor.confidence).toBe(CONFIDENCE.UNVERIFIED);
+    expect(fieldMeta.vendor!.confidence).toBe(CONFIDENCE.unverified);
   });
 
   it("drops a field to suspect with the reason attached on bad math", () => {
@@ -47,8 +48,8 @@ describe("computeConfidence", () => {
       extraction: extraction({ total: 863 }),
       today: TODAY,
     });
-    expect(fieldMeta.total.confidence).toBe(CONFIDENCE.SUSPECT);
-    expect(fieldMeta.total.reasons[0]).toContain("digit swap");
+    expect(fieldMeta.total!.confidence).toBe(CONFIDENCE.suspect);
+    expect(fieldMeta.total!.reasons[0]).toContain("digit swap");
     expect(flaggedCount).toBeGreaterThan(0);
   });
 
@@ -59,9 +60,9 @@ describe("computeConfidence", () => {
       today: TODAY,
     });
     // Arithmetic + agreement = two independent confirmations.
-    expect(fieldMeta.total.confidence).toBe(CONFIDENCE.STRONG);
+    expect(fieldMeta.total!.confidence).toBe(CONFIDENCE.strong);
     // Vendor now has exactly one confirmation (agreement).
-    expect(fieldMeta.vendor.confidence).toBe(CONFIDENCE.VERIFIED);
+    expect(fieldMeta.vendor!.confidence).toBe(CONFIDENCE.verified);
   });
 
   it("suspects a field the second model read differently even when math passes for the primary", () => {
@@ -70,8 +71,8 @@ describe("computeConfidence", () => {
       secondOpinion: extraction({ vendor: "Acme Fresh Produce" }),
       today: TODAY,
     });
-    expect(fieldMeta.vendor.confidence).toBe(CONFIDENCE.SUSPECT);
-    expect(fieldMeta.vendor.reasons[0]).toContain("disagree");
+    expect(fieldMeta.vendor!.confidence).toBe(CONFIDENCE.suspect);
+    expect(fieldMeta.vendor!.reasons[0]).toContain("disagree");
   });
 
   it("scores missing fields 0 with a not-found reason, without flagging them", () => {
@@ -79,8 +80,8 @@ describe("computeConfidence", () => {
       extraction: extraction({ invoice_number: null }),
       today: TODAY,
     });
-    expect(fieldMeta.invoice_number.confidence).toBe(CONFIDENCE.MISSING);
-    expect(fieldMeta.invoice_number.reasons).toEqual([
+    expect(fieldMeta.invoice_number!.confidence).toBe(CONFIDENCE.missing);
+    expect(fieldMeta.invoice_number!.reasons).toEqual([
       "Not found in the document",
     ]);
     expect(flaggedCount).toBe(0);
@@ -102,8 +103,8 @@ describe("computeConfidence", () => {
       today: TODAY,
     };
     // Without a tiebreaker the field is suspect and needs a human.
-    expect(computeConfidence(disputed).fieldMeta.vendor.confidence).toBe(
-      CONFIDENCE.SUSPECT,
+    expect(computeConfidence(disputed).fieldMeta.vendor!.confidence).toBe(
+      CONFIDENCE.suspect,
     );
 
     // With one that backs the primary, it resolves without human attention.
@@ -111,10 +112,10 @@ describe("computeConfidence", () => {
       ...disputed,
       tiebreak: { vendor: "Acme Cloud Services Inc." },
     });
-    expect(settled.fieldMeta.vendor.confidence).toBeGreaterThanOrEqual(
-      CONFIDENCE.VERIFIED,
+    expect(settled.fieldMeta.vendor!.confidence).toBeGreaterThanOrEqual(
+      CONFIDENCE.verified,
     );
-    expect(settled.fieldMeta.vendor.reasons[0]).toContain("2 of 3");
+    expect(settled.fieldMeta.vendor!.reasons[0]).toContain("2 of 3");
     expect(settled.corrections).toEqual({});
   });
 
@@ -127,7 +128,7 @@ describe("computeConfidence", () => {
     });
     expect(result.corrections).toEqual({ total: 863 });
     // Silently rewriting a value would defeat the point — the user is told.
-    expect(result.fieldMeta.total.reasons.join(" ")).toContain("Corrected to");
+    expect(result.fieldMeta.total!.reasons.join(" ")).toContain("Corrected to");
   });
 
   it("re-validates a corrected value instead of trusting the vote blindly", () => {
@@ -141,8 +142,8 @@ describe("computeConfidence", () => {
       today: TODAY,
     });
     expect(result.corrections).toEqual({ doc_date: "2027-09-03" });
-    expect(result.fieldMeta.doc_date.confidence).toBe(CONFIDENCE.SUSPECT);
-    const reasons = result.fieldMeta.doc_date.reasons.join(" ");
+    expect(result.fieldMeta.doc_date!.confidence).toBe(CONFIDENCE.suspect);
+    const reasons = result.fieldMeta.doc_date!.reasons.join(" ");
     expect(reasons).toContain("future");
     // The user needs both halves: it was changed, and the change looks wrong.
     expect(reasons).toContain("Corrected to");
@@ -158,8 +159,8 @@ describe("computeConfidence", () => {
       today: TODAY,
     });
     expect(result.corrections).toEqual({ total: 999 });
-    expect(result.fieldMeta.total.confidence).toBe(CONFIDENCE.SUSPECT);
-    expect(result.fieldMeta.total.reasons.join(" ")).toMatch(/836|total reads/i);
+    expect(result.fieldMeta.total!.confidence).toBe(CONFIDENCE.suspect);
+    expect(result.fieldMeta.total!.reasons.join(" ")).toMatch(/836|total reads/i);
   });
 
   it("keeps the field flagged when three readings disagree", () => {
@@ -169,7 +170,7 @@ describe("computeConfidence", () => {
       tiebreak: { total: 638 },
       today: TODAY,
     });
-    expect(result.fieldMeta.total.confidence).toBe(CONFIDENCE.SUSPECT);
+    expect(result.fieldMeta.total!.confidence).toBe(CONFIDENCE.suspect);
     expect(result.corrections).toEqual({});
     expect(result.flaggedCount).toBeGreaterThan(0);
   });
@@ -190,7 +191,7 @@ describe("computeConfidence", () => {
       today: TODAY,
     });
     expect(matchedDuplicateId).toBe("prior-doc");
-    expect(fieldMeta.duplicate.confidence).toBe(CONFIDENCE.SUSPECT);
-    expect(fieldMeta.duplicate.reasons[0]).toContain("july-invoice.pdf");
+    expect(fieldMeta.duplicate!.confidence).toBe(CONFIDENCE.suspect);
+    expect(fieldMeta.duplicate!.reasons[0]).toContain("july-invoice.pdf");
   });
 });

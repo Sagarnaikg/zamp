@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { duplicateSignal } from "./duplicates";
-import type { DuplicateCandidate, Extraction } from "./types";
+import { duplicateSignal } from "@/server/confidence/duplicates";
+import type { DuplicateCandidate, Extraction } from "@/server/confidence/types";
+import { ExpenseCategory } from "@/server/constants";
 
 function extraction(overrides: Partial<Extraction> = {}): Extraction {
   return {
@@ -11,7 +12,7 @@ function extraction(overrides: Partial<Extraction> = {}): Extraction {
     subtotal: 760,
     tax: 76,
     total: 836,
-    category: "software",
+    category: ExpenseCategory.Software,
     line_items: [],
     extra_fields: [],
     ...overrides,

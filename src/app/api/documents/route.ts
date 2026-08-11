@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspaceId } from "@/server/workspace";
 import { listDocuments, ingestDocument } from "@/server/services/documents";
-import {
-  ACCEPTED_MIME_TYPES,
-  MAX_FILE_BYTES,
-} from "@/server/ingest/detect";
+import { API_MESSAGES, HTTP_STATUS, TIMEOUTS, UPLOAD } from "@/server/constants";
 
 // Extraction runs synchronously within the request; on Vercel Hobby the
 // default 10s timeout is too tight for a vision call (decisions.md §7).
-export const maxDuration = 60;
+export const maxDuration = TIMEOUTS.extractionRouteSeconds;
 
 export async function GET() {
   const workspaceId = await getWorkspaceId();
@@ -22,20 +19,30 @@ export async function POST(request: NextRequest) {
   const file = formData.get("file");
   if (!(file instanceof File)) {
     return NextResponse.json(
-      { error: "Attach a file under the 'file' form field." },
-      { status: 400 },
+      { error: API_MESSAGES.missingFile },
+      { status: HTTP_STATUS.badRequest },
     );
   }
-  if (!ACCEPTED_MIME_TYPES.includes(file.type as never)) {
+  if (!UPLOAD.acceptedMimeTypes.includes(file.type as never)) {
     return NextResponse.json(
-      { error: `Unsupported file type "${file.type}". Accepted: PDF, JPEG, PNG, WebP.` },
-      { status: 400 },
+      {
+        error: API_MESSAGES.unsupportedFileType(
+          file.type,
+          UPLOAD.acceptedMimeTypes.join(", "),
+        ),
+      },
+      { status: HTTP_STATUS.badRequest },
     );
   }
-  if (file.size > MAX_FILE_BYTES) {
+  if (file.size > UPLOAD.maxBytes) {
     return NextResponse.json(
-      { error: `File is ${(file.size / 1024 / 1024).toFixed(1)}MB — the limit is 10MB.` },
-      { status: 400 },
+      {
+        error: API_MESSAGES.fileTooLarge(
+          (file.size / 1024 / 1024).toFixed(1),
+          UPLOAD.maxBytes / 1024 / 1024,
+        ),
+      },
+      { status: HTTP_STATUS.badRequest },
     );
   }
 
@@ -46,7 +53,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (result.error) {
-    return NextResponse.json(result, { status: 502 });
+    return NextResponse.json(result, { status: HTTP_STATUS.badGateway });
   }
-  return NextResponse.json(result, { status: 201 });
+  return NextResponse.json(result, { status: HTTP_STATUS.created });
 }

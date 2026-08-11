@@ -5,13 +5,7 @@
  * the document it was spent on.
  */
 
-export interface TokenUsage {
-  input: number;
-  output: number;
-  total: number;
-  /** Number of model calls — the other half of the cost story. */
-  calls: number;
-}
+import type { TokenUsage } from "@/server/db/schema";
 
 export function emptyUsage(): TokenUsage {
   return { input: 0, output: 0, total: 0, calls: 0 };

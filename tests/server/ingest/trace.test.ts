@@ -4,7 +4,13 @@ import {
   PipelineTrace,
   buildPipelineView,
   type StageResult,
-} from "./trace";
+} from "@/server/ingest/trace";
+import {
+  PipelineStageKey,
+  Provider,
+  StageStatus,
+  StageViewStatus,
+} from "@/server/constants";
 
 describe("PIPELINE_GRAPH", () => {
   it("has no edge pointing at a node that doesn't exist", () => {
@@ -31,98 +37,98 @@ describe("PIPELINE_GRAPH", () => {
     const roots = PIPELINE_GRAPH.filter((n) => n.dependsOn.length === 0);
     const depended = new Set(PIPELINE_GRAPH.flatMap((n) => n.dependsOn));
     const leaves = PIPELINE_GRAPH.filter((n) => !depended.has(n.key));
-    expect(roots.map((n) => n.key)).toEqual(["store"]);
-    expect(leaves.map((n) => n.key)).toEqual(["score"]);
+    expect(roots.map((n) => n.key)).toEqual([PipelineStageKey.Store]);
+    expect(leaves.map((n) => n.key)).toEqual([PipelineStageKey.Score]);
   });
 
   it("fans out into parallel branches that merge again", () => {
     // Verification and duplicate checking are genuinely independent, which is
     // what makes this a graph rather than a list.
-    const fanOut = PIPELINE_GRAPH.filter((n) => n.dependsOn.includes("extract"));
-    expect(fanOut.map((n) => n.key).sort()).toEqual(["duplicates", "validate"]);
+    const fanOut = PIPELINE_GRAPH.filter((n) => n.dependsOn.includes(PipelineStageKey.Extract));
+    expect(fanOut.map((n) => n.key).sort()).toEqual([PipelineStageKey.Duplicates, PipelineStageKey.Validate]);
 
-    const merge = PIPELINE_GRAPH.find((n) => n.key === "score");
-    expect(merge?.dependsOn.sort()).toEqual(["duplicates", "tiebreak"]);
+    const merge = PIPELINE_GRAPH.find((n) => n.key === PipelineStageKey.Score);
+    expect(merge?.dependsOn.sort()).toEqual([PipelineStageKey.Duplicates, PipelineStageKey.Tiebreak]);
   });
 });
 
 describe("PipelineTrace", () => {
   it("records results in the order they ran", () => {
     const trace = new PipelineTrace();
-    trace.ok("store", trace.begin(), { detail: "saved" });
-    trace.ok("detect", trace.begin(), { detail: "digital pdf" });
-    expect(trace.toJSON().map((r) => r.key)).toEqual(["store", "detect"]);
+    trace.ok(PipelineStageKey.Store, trace.begin(), { detail: "saved" });
+    trace.ok(PipelineStageKey.Detect, trace.begin(), { detail: "digital pdf" });
+    expect(trace.toJSON().map((r) => r.key)).toEqual([PipelineStageKey.Store, PipelineStageKey.Detect]);
   });
 
   it("keeps a skipped stage, with its reason", () => {
     // A skipped stage is the interesting part of the graph — the user should
     // see that the pipeline chose not to spend, and why.
     const trace = new PipelineTrace();
-    trace.skipped("second_reading", "arithmetic already reconciles");
+    trace.skipped(PipelineStageKey.SecondReading, "arithmetic already reconciles");
     const [result] = trace.toJSON();
-    expect(result.status).toBe("skipped");
+    expect(result.status).toBe(StageStatus.Skipped);
     expect(result.detail).toBe("arithmetic already reconciles");
   });
 
   it("carries the model and token cost of stages that called one", () => {
     const trace = new PipelineTrace();
-    trace.ok("extract", trace.begin(), {
+    trace.ok(PipelineStageKey.Extract, trace.begin(), {
       detail: "read the document",
-      provider: "google",
+      provider: Provider.Google,
       model: "gemini-flash-latest",
       usage: { input: 900, output: 100, total: 1000, calls: 1 },
     });
     const [result] = trace.toJSON();
-    expect(result.provider).toBe("google");
+    expect(result.provider).toBe(Provider.Google);
     expect(result.usage?.total).toBe(1000);
   });
 
   it("records a failure without losing stages that already succeeded", () => {
     const trace = new PipelineTrace();
-    trace.ok("store", trace.begin(), { detail: "saved" });
-    trace.failed("extract", trace.begin(), "provider rate limited");
-    expect(trace.toJSON().map((r) => r.status)).toEqual(["ok", "failed"]);
+    trace.ok(PipelineStageKey.Store, trace.begin(), { detail: "saved" });
+    trace.failed(PipelineStageKey.Extract, trace.begin(), "provider rate limited");
+    expect(trace.toJSON().map((r) => r.status)).toEqual([StageStatus.Ok, StageStatus.Failed]);
   });
 });
 
 describe("buildPipelineView", () => {
   const ran: StageResult[] = [
-    { key: "store", status: "ok", detail: "saved", durationMs: 2 },
-    { key: "detect", status: "ok", detail: "digital pdf", durationMs: 10 },
+    { key: PipelineStageKey.Store, status: StageStatus.Ok, detail: "saved", durationMs: 2 },
+    { key: PipelineStageKey.Detect, status: StageStatus.Ok, detail: "digital pdf", durationMs: 10 },
     {
-      key: "extract",
-      status: "ok",
+      key: PipelineStageKey.Extract,
+      status: StageStatus.Ok,
       detail: "read text layer",
       durationMs: 1800,
-      provider: "google",
+      provider: Provider.Google,
       model: "gemini-flash-lite-latest",
       usage: { input: 450, output: 440, total: 890, calls: 1 },
     },
-    { key: "validate", status: "ok", detail: "7 corroborated", durationMs: 5 },
-    { key: "second_reading", status: "skipped", detail: "not needed", durationMs: 0 },
+    { key: PipelineStageKey.Validate, status: StageStatus.Ok, detail: "7 corroborated", durationMs: 5 },
+    { key: PipelineStageKey.SecondReading, status: StageStatus.Skipped, detail: "not needed", durationMs: 0 },
   ];
 
   it("returns every node in the graph, even ones that never ran", () => {
     const view = buildPipelineView(ran);
     expect(view.nodes).toHaveLength(PIPELINE_GRAPH.length);
-    const compare = view.nodes.find((n) => n.key === "compare");
-    expect(compare?.status).toBe("pending");
+    const compare = view.nodes.find((n) => n.key === PipelineStageKey.Compare);
+    expect(compare?.status).toBe(StageViewStatus.Pending);
   });
 
   it("merges runtime results onto their static node", () => {
     const view = buildPipelineView(ran);
-    const extract = view.nodes.find((n) => n.key === "extract");
+    const extract = view.nodes.find((n) => n.key === PipelineStageKey.Extract);
     expect(extract?.label).toBe("First reading");
     expect(extract?.phase).toBe("Reading");
     expect(extract?.model).toBe("gemini-flash-lite-latest");
-    expect(extract?.status).toBe("ok");
+    expect(extract?.status).toBe(StageViewStatus.Ok);
   });
 
   it("emits one edge per dependency, ready to draw", () => {
     const view = buildPipelineView(ran);
-    expect(view.edges).toContainEqual({ from: "extract", to: "validate" });
-    expect(view.edges).toContainEqual({ from: "extract", to: "duplicates" });
-    expect(view.edges).toContainEqual({ from: "duplicates", to: "score" });
+    expect(view.edges).toContainEqual({ from: PipelineStageKey.Extract, to: PipelineStageKey.Validate });
+    expect(view.edges).toContainEqual({ from: PipelineStageKey.Extract, to: PipelineStageKey.Duplicates });
+    expect(view.edges).toContainEqual({ from: PipelineStageKey.Duplicates, to: PipelineStageKey.Score });
   });
 
   it("totals only the stages that actually spent tokens", () => {
@@ -137,7 +143,7 @@ describe("buildPipelineView", () => {
     const view = buildPipelineView([]);
     expect(view.nodes).toHaveLength(PIPELINE_GRAPH.length);
     expect(view.nodes.map((n) => n.status)).toEqual(
-      view.nodes.map(() => "pending"),
+      view.nodes.map(() => StageViewStatus.Pending),
     );
     expect(view.edges.length).toBeGreaterThan(0);
   });

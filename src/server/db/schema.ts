@@ -1,4 +1,12 @@
 import {
+  DocumentStatus,
+  ExtractionField,
+  FileKind,
+  PipelineStageKey,
+  Provider,
+  StageStatus,
+} from "@/server/constants";
+import {
   date,
   integer,
   jsonb,
@@ -10,33 +18,33 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const documentStatus = pgEnum("document_status", [
-  "processing",
-  "needs_review",
-  "accepted",
-  "failed",
-]);
+export const documentStatus = pgEnum(
+  "document_status",
+  Object.values(DocumentStatus) as [string, ...string[]],
+);
 
-export const fileKind = pgEnum("file_kind", [
-  "digital_pdf",
-  "scanned_pdf",
-  "image",
-]);
+export const fileKind = pgEnum(
+  "file_kind",
+  Object.values(FileKind) as [string, ...string[]],
+);
 
-/**
- * What one pipeline stage did. Only runtime results are stored — labels and
- * edges live in the static graph (server/ingest/trace.ts) and are merged in
- * on read, so changing a label doesn't require rewriting history.
- */
-export type StageResult = {
-  key: string;
-  status: "ok" | "skipped" | "failed";
+export interface TokenUsage {
+  input: number;
+  output: number;
+  total: number;
+  calls: number;
+}
+
+/** Runtime result of one pipeline stage; labels and edges live in the graph. */
+export interface StageResult {
+  key: PipelineStageKey;
+  status: StageStatus;
   detail: string;
   durationMs: number;
-  provider?: string;
+  provider?: Provider;
   model?: string;
-  usage?: { input: number; output: number; total: number; calls: number };
-};
+  usage?: TokenUsage;
+}
 
 export const documents = pgTable("documents", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -47,7 +55,7 @@ export const documents = pgTable("documents", {
   fileKind: fileKind("file_kind"),
   // Disk driver: relative key under uploads/. Blob driver: full URL.
   storagePath: text("storage_path").notNull(),
-  status: documentStatus("status").notNull().default("processing"),
+  status: documentStatus("status").notNull().default(DocumentStatus.Processing),
   error: text("error"),
   /** What ingestion actually did, stage by stage — surfaced in the UI. */
   pipeline: jsonb("pipeline").$type<StageResult[]>().notNull().default([]),
@@ -59,31 +67,24 @@ export const documents = pgTable("documents", {
     .defaultNow(),
 });
 
-/**
- * Per-field confidence metadata, keyed by extraction column name.
- * Displayed in the review UI, never filtered on — hence JSONB.
- */
-export type FieldMeta = Record<
-  string,
-  { confidence: number; reasons: string[] }
->;
+export interface FieldConfidence {
+  confidence: number;
+  reasons: string[];
+}
+
+/** Per-field confidence, keyed by extraction field. Displayed, never filtered. */
+export type FieldMeta = Partial<Record<ExtractionField, FieldConfidence>>;
 
 /**
- * Capture net for document data outside the fixed schema (PO numbers, due
- * dates, payment terms, tax IDs, ...). Guarantees no silent data loss at
- * ingestion. `key` is the normalized canonical name (po_number), `label`
- * the text as printed on the document (PO No.) — key for querying, label
- * for display.
+ * Document data outside the fixed schema, so nothing legible is lost.
+ * `key` is the normalized name (po_number) for querying; `label` is the
+ * text as printed (PO No.) for display.
  */
-export type ExtraField = { key: string; label: string; value: string };
-
-/** Token cost of the model calls that produced this extraction. */
-export type TokenUsage = {
-  input: number;
-  output: number;
-  total: number;
-  calls: number;
-};
+export interface ExtraField {
+  key: string;
+  label: string;
+  value: string;
+}
 
 export const extractions = pgTable("extractions", {
   id: uuid("id").primaryKey().defaultRandom(),
