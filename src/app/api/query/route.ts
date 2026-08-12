@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspaceId } from "@/server/workspace";
 import { ask } from "@/server/services/conversations";
-import { API_MESSAGES, HTTP_STATUS, QUERY, TIMEOUTS } from "@/server/constants";
+import { API_MESSAGES, HTTP_STATUS, QUERY } from "@/server/constants";
 
-export const maxDuration = TIMEOUTS.queryRouteSeconds;
+// Next.js requires this export to be a static literal — keep in sync with
+// TIMEOUTS.queryRouteSeconds by hand.
+export const maxDuration = 30;
 
 /**
  * Asking is always recorded into a conversation (§31). `conversationId` is

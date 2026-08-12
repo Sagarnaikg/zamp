@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspaceId } from "@/server/workspace";
 import { listDocuments, ingestDocument } from "@/server/services/documents";
-import { API_MESSAGES, HTTP_STATUS, TIMEOUTS, UPLOAD } from "@/server/constants";
+import { API_MESSAGES, HTTP_STATUS, UPLOAD } from "@/server/constants";
 
 // Extraction runs synchronously within the request; on Vercel Hobby the
 // default 10s timeout is too tight for a vision call (decisions.md §7).
-export const maxDuration = TIMEOUTS.extractionRouteSeconds;
+// Next.js requires this export to be a static literal, so it can't reference
+// TIMEOUTS.extractionRouteSeconds directly — keep the two in sync by hand.
+export const maxDuration = 60;
 
 export async function GET() {
   const workspaceId = await getWorkspaceId();
