@@ -47,6 +47,11 @@ export const REVIEW_CONFIRM = {
     `${fields} still ${plural ? "need" : "needs"} review. Accepting won't fix that — it just puts the document in the ledger as-is. You can correct it later.`,
 } as const;
 
+export const REJECT_CONFIRM = {
+  title: "Reject this document?",
+  body: "This deletes the document and everything extracted from it. There's no undo — you'd need to upload it again.",
+} as const;
+
 export const A11Y = {
   skipToContent: "Skip to main content",
   primaryNavigation: "Primary",

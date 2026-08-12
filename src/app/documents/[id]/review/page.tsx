@@ -18,6 +18,7 @@ import {
   ButtonVariant,
   ConfidenceLevel,
   confidenceLevelOf,
+  REJECT_CONFIRM,
   REVIEW_CONFIRM,
   ReviewTab,
   ROUTES,
@@ -76,6 +77,7 @@ export default function ReviewPage() {
       : null;
   const [tab, setTab] = useState<ReviewTab | null>(initialTab);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [rejectConfirmOpen, setRejectConfirmOpen] = useState(false);
 
   if (isPending) {
     return (
@@ -133,6 +135,13 @@ export default function ReviewPage() {
     }
   }
 
+  function rejectNow() {
+    setRejectConfirmOpen(false);
+    // mutate, not mutateAsync: a rejected promise here would be unhandled and
+    // crash the page instead of showing the reason.
+    reject.mutate(undefined, { onSuccess: () => router.push(ROUTES.documents) });
+  }
+
   // Until the user picks a tab, follow the document: a half-read document has
   // nothing to review yet, so show what the pipeline is doing instead.
   const activeTab = tab ?? (processing ? ReviewTab.Pipeline : ReviewTab.Values);
@@ -160,13 +169,7 @@ export default function ReviewPage() {
               <Button
                 variant={ButtonVariant.Secondary}
                 loading={reject.isPending}
-                // mutate, not mutateAsync: a rejected promise here would be
-                // unhandled and crash the page instead of showing the reason.
-                onClick={() =>
-                  reject.mutate(undefined, {
-                    onSuccess: () => router.push(ROUTES.documents),
-                  })
-                }
+                onClick={() => setRejectConfirmOpen(true)}
               >
                 {ACTIONS.reject}
               </Button>
@@ -255,6 +258,22 @@ export default function ReviewPage() {
           </Button>
           <Button loading={accept.isPending} onClick={acceptNow}>
             {ACTIONS.acceptAnyway}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={rejectConfirmOpen}
+        onClose={() => setRejectConfirmOpen(false)}
+        title={REJECT_CONFIRM.title}
+      >
+        <p className="text-[13px] text-foreground">{REJECT_CONFIRM.body}</p>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button variant={ButtonVariant.Secondary} onClick={() => setRejectConfirmOpen(false)}>
+            {ACTIONS.cancel}
+          </Button>
+          <Button variant={ButtonVariant.Danger} loading={reject.isPending} onClick={rejectNow}>
+            {ACTIONS.reject}
           </Button>
         </div>
       </Modal>
