@@ -41,12 +41,24 @@ const DOT_STYLES: Record<StageViewStatus, string> = {
  * hidden, so the graph keeps the same shape whichever path executed and the
  * user can see what was skipped (§23).
  */
-export function PipelineNodeCard({ node }: { node: PipelineViewNode }) {
+export function PipelineNodeCard({
+  node,
+  showTechnical,
+}: {
+  node: PipelineViewNode;
+  /** Provider/model name and token count — a developer/trust-audit detail,
+   * off by default (see PipelineGraph's toggle). */
+  showTechnical: boolean;
+}) {
   const Icon = STAGE_ICONS[node.key];
   const didNotRun =
     node.status === StageViewStatus.Pending || node.status === StageViewStatus.Skipped;
+  // Nothing to add below the label otherwise — the phase is already the
+  // branch header directly above, so it would just repeat itself.
   const subtitle =
-    node.provider && node.model ? `${node.provider} · ${node.model}` : node.phase;
+    showTechnical && node.provider && node.model
+      ? `${node.provider} · ${node.model}`
+      : null;
 
   return (
     <div
@@ -76,7 +88,9 @@ export function PipelineNodeCard({ node }: { node: PipelineViewNode }) {
             <span className="block truncate text-[13px] font-semibold text-foreground">
               {node.label}
             </span>
-            <span className="block truncate text-[11px] text-muted">{subtitle}</span>
+            {subtitle && (
+              <span className="block truncate text-[11px] text-muted">{subtitle}</span>
+            )}
           </span>
         </div>
 
@@ -105,7 +119,7 @@ export function PipelineNodeCard({ node }: { node: PipelineViewNode }) {
           >
             {STAGE_STATUS_LABELS[node.status]}
           </span>
-          {node.usage && node.usage.total > 0 && (
+          {showTechnical && node.usage && node.usage.total > 0 && (
             <span className="rounded-full bg-surface-raised px-2.5 py-1 text-[11px] text-muted">
               {node.usage.total.toLocaleString()} tokens
             </span>

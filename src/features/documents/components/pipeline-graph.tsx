@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState, type WheelEvent } from "react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Wrench } from "lucide-react";
+import { cn } from "@/lib/utils/cn";
 import { formatDuration } from "@/lib/utils/format";
 import { layoutPipeline } from "../pipeline-layout";
 import { PipelineNodeCard } from "./pipeline-node-card";
@@ -50,6 +51,10 @@ function Totals({ totals }: { totals: DocumentPipeline["totals"] }) {
 export function PipelineGraph({ pipeline }: { pipeline: DocumentPipeline }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  // Off by default: model names and token counts are a developer/trust-audit
+  // view, not what a finance reviewer needs to decide whether to trust a
+  // number. The friendly step names and what-happened text stay either way.
+  const [showTechnical, setShowTechnical] = useState(false);
 
   const { nodes, edges, width, height } = layoutPipeline(pipeline.nodes);
 
@@ -68,7 +73,25 @@ export function PipelineGraph({ pipeline }: { pipeline: DocumentPipeline }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Totals totals={pipeline.totals} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Totals totals={pipeline.totals} />
+
+        <button
+          type="button"
+          aria-pressed={showTechnical}
+          onClick={() => setShowTechnical((v) => !v)}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-medium transition-colors",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+            showTechnical
+              ? "bg-surface-inverse text-surface-inverse-foreground"
+              : "bg-surface text-muted hover:text-foreground",
+          )}
+        >
+          <Wrench className="size-3.5" strokeWidth={1.75} aria-hidden />
+          Technical details
+        </button>
+      </div>
 
       <div
         className="relative overflow-hidden rounded-card bg-surface-raised"
@@ -122,7 +145,7 @@ export function PipelineGraph({ pipeline }: { pipeline: DocumentPipeline }) {
 
               {nodes.map(({ node, x, y }) => (
                 <div key={node.key} className="absolute" style={{ left: x, top: y }}>
-                  <PipelineNodeCard node={node} />
+                  <PipelineNodeCard node={node} showTechnical={showTechnical} />
                 </div>
               ))}
             </div>
