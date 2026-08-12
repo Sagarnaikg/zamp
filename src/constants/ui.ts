@@ -42,6 +42,15 @@ export const CONFIDENCE_LABELS: Record<ConfidenceLevel, string> = {
   [ConfidenceLevel.Missing]: "Not found",
 };
 
+/** What to actually do about a level, alongside the reasons that explain it —
+ * "check this" only helps once it's clear what checking it means. Null where
+ * a level needs no action. */
+export const CONFIDENCE_HINTS: Partial<Record<ConfidenceLevel, string>> = {
+  [ConfidenceLevel.Suspect]: "Compare it against the original document and correct it if it's wrong.",
+  [ConfidenceLevel.Unverified]: "Nothing independently confirms this yet — worth a glance.",
+  [ConfidenceLevel.Missing]: "Not on the document, or not found. Add it only if it should be there.",
+};
+
 /** Status wording aimed at what the user should do, not the internal state name. */
 export const STATUS_LABELS: Record<DocumentStatus, string> = {
   [DocumentStatus.Processing]: "Reading",
