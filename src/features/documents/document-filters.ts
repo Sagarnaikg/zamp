@@ -9,34 +9,17 @@ export interface DocumentFilters {
   dateTo: string;
 }
 
-const EMPTY_FILTERS: DocumentFilters = {
+/** The page's starting filters: unbounded. A narrower default (this used to
+ * be the last 7 days) can make an upload outside that window read as a
+ * failure — the upload appears to have vanished rather than just being
+ * filtered out. Pagination is what keeps a long history from dumping onto
+ * the page at once, not the date filter. */
+export const defaultFilters: DocumentFilters = {
   search: "",
   status: "all",
   dateFrom: "",
   dateTo: "",
 };
-
-/** YYYY-MM-DD in local time — `toISOString` converts to UTC first, which
- * shifts the date near midnight and is exactly wrong for a date-only input. */
-function toDateInputValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-/** The page's starting filters: the last week of uploads, so a workspace with
- * months of history doesn't dump its entire backlog into view on first load. */
-export function defaultFilters(today: Date = new Date()): DocumentFilters {
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
-
-  return {
-    ...EMPTY_FILTERS,
-    dateFrom: toDateInputValue(weekAgo),
-    dateTo: toDateInputValue(today),
-  };
-}
 
 /** Local-date comparison, so "to" includes the whole day rather than midnight. */
 function withinRange(createdAt: Date, from: string, to: string): boolean {

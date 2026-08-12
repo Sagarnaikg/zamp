@@ -26,11 +26,7 @@ import {
 
 export default function DocumentsPage() {
   const { data: documents, isPending, isError, error, refetch } = useDocuments();
-  // Computed once — "today" at first render — so the filters bar has a fixed
-  // baseline to compare against and Clear has a fixed target to return to,
-  // rather than either drifting if the date rolls over mid-session.
-  const [initialFilters] = useState(defaultFilters);
-  const [filters, setFilters] = useState(initialFilters);
+  const [filters, setFilters] = useState<DocumentFilters>(defaultFilters);
   const [page, setPage] = useState(1);
 
   // A new filter can easily leave the current page past the end of the
@@ -68,7 +64,7 @@ export default function DocumentsPage() {
             </h2>
             <DocumentFiltersBar
               filters={filters}
-              defaultFilters={initialFilters}
+              defaultFilters={defaultFilters}
               onChange={handleFiltersChange}
               resultCount={filtered.length}
             />
