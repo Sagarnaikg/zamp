@@ -37,15 +37,19 @@ const INLINE_ROW_LIMIT = 5;
  * framer-motion morphs one into the other instead of a hard cut. */
 const TOGGLE_LAYOUT_ID = "ask-ledger-toggle";
 
+function UserBubble({ content }: { content: string }) {
+  return (
+    <div className="flex justify-end">
+      <p className="max-w-[85%] rounded-panel rounded-br-sm bg-accent px-3.5 py-2 text-[13px] text-accent-foreground">
+        {content}
+      </p>
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: ConversationMessage }) {
   if (message.role === MessageRole.User) {
-    return (
-      <div className="flex justify-end">
-        <p className="max-w-[85%] rounded-panel rounded-br-sm bg-accent px-3.5 py-2 text-[13px] text-accent-foreground">
-          {message.content}
-        </p>
-      </div>
-    );
+    return <UserBubble content={message.content} />;
   }
 
   const figure = formatAnswerFigure(message);
@@ -115,6 +119,15 @@ export function ChatPanel({ defaultCollapsed = true }: ChatPanelProps) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
   const [showHistory, setShowHistory] = useState(false);
+  /**
+   * The question stands in for itself until the thread refetch brings back the
+   * stored message. Messages are server state, so without this the question
+   * and its answer would appear together once the request settles — the asker
+   * would watch a spinner with no record of what they just asked.
+   */
+  const [pending, setPending] = useState<{ question: string; fromCount: number } | null>(
+    null,
+  );
   const threadRef = useRef<HTMLDivElement>(null);
 
   const conversations = useConversations();
@@ -124,28 +137,44 @@ export function ChatPanel({ defaultCollapsed = true }: ChatPanelProps) {
 
   const messages = conversation.data?.messages ?? [];
 
+  // Retire the stand-in the moment the thread actually grows, rather than when
+  // the request settles — dropping it any earlier blinks the question out
+  // while the refetch that carries the real message is still in flight.
+  const standIn =
+    pending !== null && messages.length <= pending.fromCount ? pending.question : null;
+
   // Keep the newest turn in view as the thread grows.
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
-  }, [messages.length, ask.isPending]);
+  }, [messages.length, ask.isPending, standIn]);
 
+  // The stand-in is counted against the thread it was asked in, so it can't
+  // follow the reader into a different one.
   function startNewThread() {
     setConversationId(null);
     setShowHistory(false);
+    setPending(null);
   }
 
   function openThread(id: string) {
     setConversationId(id);
     setShowHistory(false);
+    setPending(null);
   }
 
   function submitQuestion(rawQuestion: string) {
     const trimmed = rawQuestion.trim();
     if (trimmed.length === 0 || trimmed.length > QUERY.maxQuestionLength) return;
 
+    setPending({ question: trimmed, fromCount: messages.length });
     ask.mutate(
       { question: trimmed, conversationId: conversationId ?? undefined },
-      { onSuccess: (data) => setConversationId(data.conversationId) },
+      {
+        onSuccess: (data) => setConversationId(data.conversationId),
+        // Nothing will arrive to replace the stand-in, and the error sits
+        // directly below it.
+        onError: () => setPending(null),
+      },
     );
     setQuestion("");
   }
@@ -252,7 +281,7 @@ export function ChatPanel({ defaultCollapsed = true }: ChatPanelProps) {
       )}
 
       <div ref={threadRef} className="flex-1 space-y-3 overflow-y-auto p-4">
-        {messages.length === 0 && !ask.isPending ? (
+        {messages.length === 0 && standIn === null && !ask.isPending ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <p className="text-[13px] text-muted">
               Ask about the documents you&apos;ve accepted.
@@ -273,6 +302,8 @@ export function ChatPanel({ defaultCollapsed = true }: ChatPanelProps) {
         ) : (
           messages.map((message) => <MessageBubble key={message.id} message={message} />)
         )}
+
+        {standIn !== null && <UserBubble content={standIn} />}
 
         {ask.isPending && (
           <div className="flex items-center gap-2 text-[13px] text-muted">
