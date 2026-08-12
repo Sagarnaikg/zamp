@@ -149,17 +149,20 @@ export function ChatPanel({ defaultCollapsed = true }: ChatPanelProps) {
   }, [messages.length, ask.isPending, standIn]);
 
   // The stand-in is counted against the thread it was asked in, so it can't
-  // follow the reader into a different one.
+  // follow the reader into a different one. Also clears any error left over
+  // from that thread — otherwise it would read as a fresh, unexplained one.
   function startNewThread() {
     setConversationId(null);
     setShowHistory(false);
     setPending(null);
+    ask.reset();
   }
 
   function openThread(id: string) {
     setConversationId(id);
     setShowHistory(false);
     setPending(null);
+    ask.reset();
   }
 
   function submitQuestion(rawQuestion: string) {
@@ -169,14 +172,15 @@ export function ChatPanel({ defaultCollapsed = true }: ChatPanelProps) {
     setPending({ question: trimmed, fromCount: messages.length });
     ask.mutate(
       { question: trimmed, conversationId: conversationId ?? undefined },
-      {
-        onSuccess: (data) => setConversationId(data.conversationId),
-        // Nothing will arrive to replace the stand-in, and the error sits
-        // directly below it.
-        onError: () => setPending(null),
-      },
+      // On failure the stand-in is left in place, on purpose — it's the only
+      // record of what was asked, and retrying re-sends the same text.
+      { onSuccess: (data) => setConversationId(data.conversationId) },
     );
     setQuestion("");
+  }
+
+  function retry() {
+    if (pending) submitQuestion(pending.question);
   }
 
   function submit(event: FormEvent) {
@@ -313,9 +317,18 @@ export function ChatPanel({ defaultCollapsed = true }: ChatPanelProps) {
         )}
 
         {ask.isError && (
-          <p role="alert" className="text-[13px] text-danger">
-            {ask.error instanceof Error ? ask.error.message : "That question failed."}
-          </p>
+          <div>
+            <p role="alert" className="text-[13px] text-danger">
+              {ask.error instanceof Error ? ask.error.message : "That question failed."}
+            </p>
+            <button
+              type="button"
+              onClick={retry}
+              className="mt-1.5 rounded-full bg-surface-raised px-3 py-1 text-[12px] font-medium text-foreground transition-colors hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              Retry
+            </button>
+          </div>
         )}
       </div>
 
