@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -36,14 +35,18 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full font-sans">
         {/*
-         * beforeInteractive puts this in the initial HTML ahead of any app
-         * code, so the theme is set before first paint. A plain <script> here
-         * would work too, but React logs a warning for script tags rendered
-         * by components.
+         * A literal <script> tag, not next/script's "beforeInteractive" —
+         * that strategy queues execution through Next's own script-loading
+         * runtime (self.__next_s), which only runs once Next's async
+         * framework chunks load. The stylesheet is already render-blocking
+         * ready by then, so the browser can paint the OS-preferred theme
+         * from the CSS media query before the queued script corrects it to
+         * the stored one — the flash this whole file exists to prevent.
+         * A raw script as body's first child is part of the literal HTML
+         * byte stream instead, so it blocks parsing at this exact point,
+         * before anything else in body can paint.
          */}
-        <Script id="theme-init" strategy="beforeInteractive">
-          {THEME_INIT_SCRIPT}
-        </Script>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>
