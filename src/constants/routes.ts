@@ -1,10 +1,13 @@
+import type { ReviewTab } from "./ui";
+
 /** Every in-app path, so a route rename is one edit (decisions.md §27, §28). */
 export const ROUTES = {
   home: "/",
   documents: "/documents",
   document: (id: string) => `/documents/${id}`,
-  review: (id: string) => `/documents/${id}/review`,
-  pipeline: (id: string) => `/documents/${id}/pipeline`,
+  /** Deep-links to a specific tab, so a list row can jump straight to it. */
+  review: (id: string, tab?: ReviewTab) =>
+    tab ? `/documents/${id}/review?tab=${tab}` : `/documents/${id}/review`,
   /** Asking is part of the ledger, not a route of its own (§5). */
   ledger: "/ledger",
 } as const;
@@ -19,5 +22,7 @@ export const API_ROUTES = {
   documentRetry: (id: string) => `/api/documents/${id}/retry`,
   ledger: "/api/ledger",
   query: "/api/query",
+  conversations: "/api/conversations",
+  conversation: (id: string) => `/api/conversations/${id}`,
   status: "/api/status",
 } as const;

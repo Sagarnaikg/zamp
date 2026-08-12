@@ -20,16 +20,16 @@ export function SearchInput({ label, className, ...props }: SearchInputProps) {
         {label}
       </label>
       <span
-        className="pointer-events-none absolute left-1.5 inline-flex size-9 items-center justify-center rounded-full bg-surface-raised text-muted"
+        className="pointer-events-none absolute left-1 inline-flex size-7 items-center justify-center rounded-full bg-surface-raised text-muted"
         aria-hidden
       >
-        <Search className="size-4" strokeWidth={1.75} />
+        <Search className="size-3.5" strokeWidth={1.75} />
       </span>
       <input
         id={id}
         type="search"
         className={cn(
-          "h-12 w-full rounded-full bg-surface pl-13 pr-5 text-sm text-foreground",
+          "h-9 w-full rounded-full bg-surface pl-9 pr-3.5 text-[13px] text-foreground",
           "placeholder:text-subtle",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
           className,
