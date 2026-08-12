@@ -31,9 +31,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files — .env.example is the tracked template, everything else is real config
+# env files — required variables are documented in README.md instead
 .env*
-!.env.example
 
 # vercel
 .vercel

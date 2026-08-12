@@ -11,30 +11,32 @@ plain-language interface for asking questions about what's in it.
 
 ## What is this?
 
-A finance person uploads an invoice, receipt, or scan. The system reads it,
-checks its own arithmetic, cross-reads it with a second model when that's
-worth paying for, and scores every extracted field independently — so the
-person reviewing it knows exactly which numbers to trust and which to check
-by eye, instead of silently trusting a single LLM's output. Once a document
-is accepted, it lands in an expense ledger you can browse as a table or ask
-about in plain English ("how much did we spend on software last quarter?"),
-with every answer traceable back to the specific filters it ran and the
-specific documents it matched.
+Upload an invoice or receipt and the system extracts its fields, checks its
+own arithmetic, optionally cross-reads it with a second model, and scores
+each field's confidence independently — so the reviewer knows exactly which
+numbers to trust and which to check by eye. Accepted documents land in an
+expense ledger, browsable as a table or queryable in plain English ("how
+much did we spend on software last quarter?"), with every answer traceable
+back to the filters it ran and the documents it matched.
 
-The interesting engineering problem here isn't "call an LLM to extract
-fields" — it's building a system a finance user can actually trust the output
-of, given that no single extraction is ever 100% reliable.
+The core problem isn't "call an LLM to extract fields" — it's giving a
+finance user a reason to trust the output, given that no single extraction
+is ever 100% reliable.
 
-## Architecture at a glance
+## Architecture
 
 - **One Next.js app, not a separate frontend/backend.** App Router pages and
-  API routes live in the same codebase and deploy together; there's nothing
-  to run in two terminals.
-- **Multi-provider LLM routing.** Google, OpenAI, and Anthropic are supported
-  through a single LangChain interface. Only one provider key is required —
-  the app discovers which models your account can actually reach at startup
-  rather than hardcoding model IDs, and a second configured provider
-  automatically strengthens the confidence engine (see below).
+  API routes live in the same codebase and deploy together.
+- **Multi-provider LLM routing, provider-agnostic by design.** LangChain
+  gives every provider one interface, so extraction code never branches on
+  which one is active. Google, OpenAI, and Anthropic ship out of the box
+  (development used Google + OpenAI together); adding another is a
+  self-contained change, not a rewrite — see [Adding an LLM provider](#adding-an-llm-provider).
+  Only one provider key is required to run the app at all — the app
+  discovers which models your account can actually reach at startup rather
+  than hardcoding model IDs — and configuring a second automatically
+  strengthens the confidence engine (see below) via cross-provider
+  agreement.
 - **The confidence engine** combines four independent signals per field —
   arithmetic reconciliation, format/plausibility, cross-model agreement, and
   duplicate detection — into a confidence score, with an escalation ladder
@@ -44,11 +46,10 @@ of, given that no single extraction is ever 100% reliable.
   skipped and why, which model, what it cost) and rendered as a graph in the
   review UI — not just logged, but shown.
 - **No accounts.** Workspaces are anonymous and per-browser, via an httpOnly
-  cookie set on first visit. This is intentionally the seam where real auth
-  would attach later.
-- **Ask-the-ledger conversations persist.** Questions and their answers
-  (the filters that actually ran, not the model's restatement of them) are
-  stored per thread, so a conversation survives a reload and can be reopened
+  cookie set on first visit — the seam where real auth would attach later.
+- **Ask-the-ledger conversations persist.** Questions and answers (the
+  filters that actually ran, not the model's restatement of them) are stored
+  per thread, so a conversation survives a reload and can be reopened
   without re-asking.
 
 ## Tech stack
@@ -57,46 +58,43 @@ of, given that no single extraction is ever 100% reliable.
 |---|---|
 | Framework | Next.js 16 (App Router), React 19, TypeScript |
 | Database | PostgreSQL via Drizzle ORM |
-| LLM | LangChain's unified chat-model interface — Google Gemini, OpenAI, Anthropic |
+| LLM | LangChain's unified chat-model interface — any provider works, ships with Google Gemini, OpenAI, Anthropic |
 | Validation | Zod — both LLM structured output and the NL→SQL-safe query DSL |
 | Frontend state | TanStack Query (server state) + Zustand (the one piece of client-only global state) |
 | Styling | Tailwind CSS v4 + Framer Motion |
 | Forms | React Hook Form |
 | Testing | Vitest + Testing Library |
-| File storage | Local disk in dev, Vercel Blob in production (auto-selected) |
+| File storage | Local disk by default; Vercel Blob if `BLOB_READ_WRITE_TOKEN` is set (auto-selected, optional either way) |
 
 ## Prerequisites
 
 - **Node.js ≥ 20.9** (required by Next.js 16) and npm
-- **A PostgreSQL database.** Either Docker (for the one-command setup below)
-  or any Postgres instance you already have — a connection string is all
-  that's needed
-- **At least one LLM provider API key** — Google, OpenAI, or Anthropic
+- **A PostgreSQL database** — any instance, any way you run it. A connection
+  string is all the app needs.
+- **At least one LLM provider API key.** Ships with Google, OpenAI, and
+  Anthropic; not locked to these three — see [Adding an LLM provider](#adding-an-llm-provider).
 
 ## Environment variables
 
-Copy the template and fill it in:
-
-```bash
-cp .env.example .env
-```
+Create a `.env` file in the project root with:
 
 | Variable | Required | Notes |
 |---|---|---|
-| `DATABASE_URL` | Yes | Any Postgres connection string. Matches `docker-compose.yml` by default. |
-| `GOOGLE_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | At least one | The app discovers usable models per provider at startup — no model IDs to configure. A second key improves confidence scoring via cross-provider agreement. |
-| `BLOB_READ_WRITE_TOKEN` | No | Vercel Blob storage for uploads. Unset in local dev — files go to `./uploads` on disk instead. |
+| `DATABASE_URL` | Yes | Any Postgres connection string, e.g. `postgres://zamp:zamp@localhost:5432/zamp_dev`. |
+| `GOOGLE_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | At least one | Models are discovered per provider at startup — no model IDs to configure. A second key improves confidence scoring via cross-provider agreement. |
+| `BLOB_READ_WRITE_TOKEN` | No | Optional managed file storage (Vercel Blob). Unset by default — uploads go to `./uploads` on disk, which works anywhere. |
 | `NEXT_PUBLIC_API_BASE_URL` | No | Client-side API base URL. Leave unset for same-origin (the normal case). |
-| `NEXT_PUBLIC_ERROR_REPORTING_URL` | No | Where client-side error reports are POSTed in production. Leave unset to disable. |
+| `NEXT_PUBLIC_ERROR_REPORTING_URL` | No | Where client-side error reports are POSTed. Leave unset to disable. |
 
-Check setup at any time — locally or once deployed — with `GET /api/status`:
-it reports which providers were found, which models they resolved to, and a
-plain-English problem message if nothing usable was reachable.
+Check setup at any time with `GET /api/status`: it reports which providers
+were found, which models they resolved to, and a plain-English problem
+message if nothing usable was reachable.
 
 ## Local setup
 
 ```bash
-docker compose up -d   # starts local Postgres — skip if DATABASE_URL points elsewhere
+# Postgres: `docker compose up -d` for a one-command local instance,
+# or point DATABASE_URL at any Postgres you already have.
 npm install
 npm run db:migrate
 npm run dev

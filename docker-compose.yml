@@ -1,6 +1,6 @@
-# One-command local Postgres for running the project without any accounts:
+# Optional convenience: a one-command local Postgres. DATABASE_URL can just as
+# easily point at any other Postgres instance — Docker isn't required.
 #   docker compose up -d
-# Matches the DATABASE_URL default in .env.example.
 services:
   postgres:
     image: postgres:17-alpine
