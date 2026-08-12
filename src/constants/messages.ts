@@ -34,8 +34,17 @@ export const SAMPLES = {
 export const ACTIONS = {
   retry: "Try again",
   accept: "Accept",
+  acceptAnyway: "Accept anyway",
   reject: "Reject",
   save: "Save changes",
+  cancel: "Cancel",
+} as const;
+
+export const REVIEW_CONFIRM = {
+  title: "Still needs review",
+  /** `fields` is the flagged labels, already joined into one clause. */
+  body: (fields: string, plural: boolean) =>
+    `${fields} still ${plural ? "need" : "needs"} review. Accepting won't fix that — it just puts the document in the ledger as-is. You can correct it later.`,
 } as const;
 
 export const A11Y = {

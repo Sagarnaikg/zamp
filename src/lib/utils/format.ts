@@ -51,3 +51,10 @@ export function humanizeKey(key: string): string {
   const spaced = key.replace(/_/g, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
+
+/** "A", "A and B", or "A, B, and C" — an Oxford-comma list. */
+export function joinList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return items.join(" and ");
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}

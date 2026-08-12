@@ -10,27 +10,38 @@ import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Modal } from "@/components/ui/modal";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabPanel } from "@/components/ui/tabs";
 import {
   ACTIONS,
   ButtonVariant,
+  ConfidenceLevel,
+  confidenceLevelOf,
+  REVIEW_CONFIRM,
   ReviewTab,
   ROUTES,
   STATUS_LABELS,
   STATUS_STYLES,
 } from "@/constants";
+import { CORRECTABLE_TO_EXTRACTION_FIELD } from "@/server/constants";
 import { cn } from "@/lib/utils/cn";
+import { joinList } from "@/lib/utils/format";
 import {
   useAcceptDocument,
   useDocument,
   useRejectDocument,
 } from "@/features/documents/hooks";
 import { ReviewForm } from "@/features/documents/components/review-form";
+import { REVIEW_FIELDS } from "@/features/documents/review-fields";
 import { DocumentPreview } from "@/features/documents/components/document-preview";
 import { ExtraFields } from "@/features/documents/components/extra-fields";
 import { AuditTrail } from "@/features/documents/components/audit-trail";
 import { PipelinePanel } from "@/features/documents/components/pipeline-panel";
+
+/** Levels the badge renders as a flag rather than a green light — the ones
+ * worth a second thought before this document goes in the ledger as-is. */
+const FLAGGED_LEVELS: ConfidenceLevel[] = [ConfidenceLevel.Suspect, ConfidenceLevel.Missing];
 
 const TABS = [
   { value: ReviewTab.Values, label: "Extracted values", icon: FileEdit },
@@ -64,6 +75,7 @@ export default function ReviewPage() {
       ? linkedTab
       : null;
   const [tab, setTab] = useState<ReviewTab | null>(initialTab);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (isPending) {
     return (
@@ -95,6 +107,31 @@ export default function ReviewPage() {
   const canAccept = status === DocumentStatus.NeedsReview;
   const canReject = !processing;
   const actionError = accept.error ?? reject.error;
+
+  // Confidence flags exist to be looked at before the document goes in the
+  // ledger — accepting straight past one silently defeats the point of
+  // flagging it, so this is confirmed rather than blocked (§8).
+  const flaggedLabels = extraction
+    ? REVIEW_FIELDS.filter(({ field }) => {
+        const meta = extraction.fieldMeta[CORRECTABLE_TO_EXTRACTION_FIELD[field]];
+        return meta && FLAGGED_LEVELS.includes(confidenceLevelOf(meta.confidence));
+      }).map(({ label }) => label)
+    : [];
+
+  function acceptNow() {
+    setConfirmOpen(false);
+    // Accepting is what puts a document in the ledger, so that's where it
+    // should land — the user gets to see it arrive.
+    accept.mutate(undefined, { onSuccess: () => router.push(ROUTES.ledger) });
+  }
+
+  function handleAcceptClick() {
+    if (flaggedLabels.length > 0) {
+      setConfirmOpen(true);
+    } else {
+      acceptNow();
+    }
+  }
 
   // Until the user picks a tab, follow the document: a half-read document has
   // nothing to review yet, so show what the pipeline is doing instead.
@@ -135,16 +172,7 @@ export default function ReviewPage() {
               </Button>
             )}
             {canAccept && (
-              <Button
-                loading={accept.isPending}
-                onClick={() =>
-                  // Accepting is what puts a document in the ledger, so that's
-                  // where it should land — the user gets to see it arrive.
-                  accept.mutate(undefined, {
-                    onSuccess: () => router.push(ROUTES.ledger),
-                  })
-                }
-              >
+              <Button loading={accept.isPending} onClick={handleAcceptClick}>
                 {ACTIONS.accept}
               </Button>
             )}
@@ -216,6 +244,20 @@ export default function ReviewPage() {
       <TabPanel value={ReviewTab.Pipeline} active={activeTab} idPrefix="review">
         <PipelinePanel documentId={id} />
       </TabPanel>
+
+      <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title={REVIEW_CONFIRM.title}>
+        <p className="text-[13px] text-foreground">
+          {REVIEW_CONFIRM.body(joinList(flaggedLabels), flaggedLabels.length > 1)}
+        </p>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button variant={ButtonVariant.Secondary} onClick={() => setConfirmOpen(false)}>
+            {ACTIONS.cancel}
+          </Button>
+          <Button loading={accept.isPending} onClick={acceptNow}>
+            {ACTIONS.acceptAnyway}
+          </Button>
+        </div>
+      </Modal>
     </>
   );
 }
