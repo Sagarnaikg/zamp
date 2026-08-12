@@ -7,6 +7,7 @@ import {
   eq,
   gte,
   ilike,
+  inArray,
   lte,
   sql,
   sum,
@@ -56,6 +57,23 @@ export function listLedger(workspaceId: string) {
     .from(extractions)
     .innerJoin(documents, eq(extractions.documentId, documents.id))
     .where(baseCondition(workspaceId))
+    .orderBy(desc(extractions.docDate), asc(documents.filename));
+}
+
+/**
+ * Re-read the rows a past answer matched. Deliberately a fresh read rather
+ * than a stored snapshot: a corrected total should show its corrected value
+ * when you revisit the conversation, not the number that was true that day.
+ */
+export function listLedgerByIds(workspaceId: string, documentIds: string[]) {
+  if (documentIds.length === 0) return Promise.resolve([]);
+  return db
+    .select(ledgerColumns)
+    .from(extractions)
+    .innerJoin(documents, eq(extractions.documentId, documents.id))
+    .where(
+      and(baseCondition(workspaceId), inArray(extractions.documentId, documentIds)),
+    )
     .orderBy(desc(extractions.docDate), asc(documents.filename));
 }
 

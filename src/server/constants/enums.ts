@@ -162,6 +162,12 @@ export enum StageViewStatus {
   Pending = "pending",
 }
 
+/** Who produced a turn in an ask-the-ledger conversation. */
+export enum MessageRole {
+  User = "user",
+  Assistant = "assistant",
+}
+
 export enum SensitiveKind {
   Card = "card",
   Iban = "iban",

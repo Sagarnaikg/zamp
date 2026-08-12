@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkspaceId } from "@/server/workspace";
-import { runQuery } from "@/server/services/ledger";
+import { ask } from "@/server/services/conversations";
 import { API_MESSAGES, HTTP_STATUS, QUERY, TIMEOUTS } from "@/server/constants";
 
 export const maxDuration = TIMEOUTS.queryRouteSeconds;
 
+/**
+ * Asking is always recorded into a conversation (§31). `conversationId` is
+ * optional — omitting it starts a new thread, so the first question never
+ * requires the user to create one first.
+ */
 export async function POST(request: NextRequest) {
   const workspaceId = await getWorkspaceId();
 
@@ -23,6 +28,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const result = await runQuery(workspaceId, question.trim());
-  return NextResponse.json(result);
+  const conversationId =
+    typeof body?.conversationId === "string" ? body.conversationId : undefined;
+
+  const asked = await ask(workspaceId, question.trim(), conversationId);
+  if (!asked) {
+    return NextResponse.json(
+      { error: API_MESSAGES.conversationNotFound },
+      { status: HTTP_STATUS.notFound },
+    );
+  }
+
+  return NextResponse.json({ conversationId: asked.conversationId, ...asked.result });
 }

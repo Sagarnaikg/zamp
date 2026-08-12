@@ -88,6 +88,8 @@ export const EXTRACTION = {
 
 export const QUERY = {
   maxQuestionLength: 500,
+  /** A thread's title is its opening question, trimmed to stay list-friendly. */
+  maxTitleLength: 60,
 } as const;
 
 export const HTTP_STATUS = {

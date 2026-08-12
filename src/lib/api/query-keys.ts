@@ -14,9 +14,10 @@ export const queryKeys = {
     all: ["ledger"] as const,
     list: () => [...queryKeys.ledger.all, "list"] as const,
   },
-  query: {
-    all: ["query"] as const,
-    ask: (question: string) => [...queryKeys.query.all, question] as const,
+  conversations: {
+    all: ["conversations"] as const,
+    list: () => [...queryKeys.conversations.all, "list"] as const,
+    detail: (id: string) => [...queryKeys.conversations.all, "detail", id] as const,
   },
   status: {
     all: ["status"] as const,

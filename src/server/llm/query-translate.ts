@@ -15,7 +15,7 @@ import {
  * typed columns, so unsafe queries are structurally impossible.
  */
 
-export const filterSchema = z.object({
+const filterSchema = z.object({
   field: z.nativeEnum(QueryField),
   key: z
     .string()
@@ -29,7 +29,7 @@ export const filterSchema = z.object({
   value: z.string().describe("Empty string when op is exists"),
 });
 
-export const queryDslSchema = z.object({
+const queryDslSchema = z.object({
   filters: z
     .array(filterSchema)
     .describe("All conditions are combined with AND"),
@@ -84,39 +84,120 @@ export async function translateQuery(
   return result as QueryDsl;
 }
 
+const AGGREGATE_PHRASES: Record<QueryAggregate, string> = {
+  [QueryAggregate.SumTotal]: "Total",
+  [QueryAggregate.Count]: "Number of documents",
+  [QueryAggregate.AvgTotal]: "Average total",
+  [QueryAggregate.None]: "Documents",
+};
+
+function formatDateNatural(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+/** A whole calendar year expressed as gte Jan 1 / lte Dec 31 reads better as "in 2026". */
+function isFullYearRange(from: string, to: string): boolean {
+  return (
+    from.slice(5) === "01-01" && to.slice(5) === "12-31" && from.slice(0, 4) === to.slice(0, 4)
+  );
+}
+
+function dateRangeClause(group: QueryFilter[]): string | null {
+  const gte = group.find((f) => f.op === QueryOperator.Gte);
+  const lte = group.find((f) => f.op === QueryOperator.Lte);
+  const eq = group.find((f) => f.op === QueryOperator.Eq);
+
+  if (gte && lte) {
+    return isFullYearRange(gte.value, lte.value)
+      ? `in ${gte.value.slice(0, 4)}`
+      : `between ${formatDateNatural(gte.value)} and ${formatDateNatural(lte.value)}`;
+  }
+  if (gte) return `since ${formatDateNatural(gte.value)}`;
+  if (lte) return `before ${formatDateNatural(lte.value)}`;
+  if (eq) return `on ${formatDateNatural(eq.value)}`;
+  return null;
+}
+
+function totalClause(filter: QueryFilter): string {
+  const amount = `$${filter.value}`;
+  if (filter.op === QueryOperator.Gte) return `over ${amount}`;
+  if (filter.op === QueryOperator.Lte) return `under ${amount}`;
+  return `of exactly ${amount}`;
+}
+
+function extraClause(filter: QueryFilter): string {
+  const label = filter.key ?? "that field";
+  return filter.op === QueryOperator.Exists
+    ? `with ${label} present`
+    : `where ${label} is ${filter.value}`;
+}
+
+function clauseFor(filter: QueryFilter): string {
+  switch (filter.field) {
+    case QueryField.Vendor:
+      return `from ${filter.value}`;
+    case QueryField.Category:
+      return `in the ${filter.value.replace(/_/g, " ")} category`;
+    case QueryField.Currency:
+      return `in ${filter.value.toUpperCase()}`;
+    case QueryField.InvoiceNumber:
+      return `with invoice number ${filter.value}`;
+    case QueryField.Total:
+      return totalClause(filter);
+    case QueryField.Extra:
+      return extraClause(filter);
+    default:
+      return "";
+  }
+}
+
+/** Groups filters by field first, since a date range is two filters (gte + lte) that read as one clause. */
+function clausesFrom(filters: QueryFilter[]): string[] {
+  const byField = new Map<string, QueryFilter[]>();
+  for (const filter of filters) {
+    const key = filter.field === QueryField.Extra ? `extra:${filter.key}` : filter.field;
+    byField.set(key, [...(byField.get(key) ?? []), filter]);
+  }
+
+  const clauses: string[] = [];
+  for (const [key, group] of byField) {
+    if (key === QueryField.DocDate) {
+      const clause = dateRangeClause(group);
+      if (clause) clauses.push(clause);
+      continue;
+    }
+    for (const filter of group) clauses.push(clauseFor(filter));
+  }
+  return clauses.filter(Boolean);
+}
+
+/** "clause A", "clause A and B", or "clause A, B, and C" — an Oxford-comma list. */
+function joinNaturally(clauses: string[]): string {
+  if (clauses.length <= 1) return clauses[0] ?? "";
+  if (clauses.length === 2) return clauses.join(" and ");
+  return `${clauses.slice(0, -1).join(", ")}, and ${clauses[clauses.length - 1]}`;
+}
+
 /**
- * Rendered from the filters that were APPLIED, not the model's own words, so
- * it can't misrepresent the executed query (decisions.md §5).
+ * A plain-English sentence built from the filters that were APPLIED, not the
+ * model's own words, so it can't misrepresent the executed query (decisions.md
+ * §5) — "total from Acme over $500" rather than a technical filter dump.
  */
 export function describeQuery(
   aggregate: QueryDsl["aggregate"],
   appliedFilters: QueryFilter[],
 ): string {
-  const parts: string[] = [];
-  const AGG: Record<QueryAggregate, string> = {
-    [QueryAggregate.SumTotal]: "sum of totals",
-    [QueryAggregate.Count]: "count of documents",
-    [QueryAggregate.AvgTotal]: "average total",
-    [QueryAggregate.None]: "matching documents",
-  };
-  parts.push(AGG[aggregate]);
-  const OPS: Record<QueryOperator, string> = {
-    [QueryOperator.Eq]: "is",
-    [QueryOperator.Contains]: "contains",
-    [QueryOperator.Gte]: "≥",
-    [QueryOperator.Lte]: "≤",
-    [QueryOperator.Exists]: "is present",
-  };
-  for (const filter of appliedFilters) {
-    const isExtra = filter.field === QueryField.Extra;
-    const name = isExtra
-      ? (filter.key ?? QueryField.Extra)
-      : filter.field.replace("_", " ");
-    const clause =
-      filter.op === QueryOperator.Exists
-        ? `${name} ${OPS[QueryOperator.Exists]}`
-        : `${name} ${OPS[filter.op]} "${filter.value}"`;
-    parts.push(clause);
+  const head = AGGREGATE_PHRASES[aggregate];
+  const clauses = clausesFrom(appliedFilters);
+
+  if (clauses.length === 0) {
+    return aggregate === QueryAggregate.None ? "All documents" : `${head} across all documents`;
   }
-  return parts.join(" · ");
+  return `${head} ${joinNaturally(clauses)}`;
 }

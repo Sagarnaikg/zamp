@@ -2,10 +2,13 @@ import {
   DocumentStatus,
   ExtractionField,
   FileKind,
+  MessageRole,
   PipelineStageKey,
   Provider,
+  QueryAggregate,
   StageStatus,
 } from "@/server/constants";
+import type { QueryDsl, QueryFilter } from "@/server/llm/query-translate";
 import {
   date,
   integer,
@@ -26,6 +29,11 @@ export const documentStatus = pgEnum(
 export const fileKind = pgEnum(
   "file_kind",
   Object.values(FileKind) as [string, ...string[]],
+);
+
+export const messageRole = pgEnum(
+  "message_role",
+  Object.values(MessageRole) as [string, ...string[]],
 );
 
 export interface TokenUsage {
@@ -129,6 +137,60 @@ export const lineItems = pgTable("line_items", {
   quantity: numeric("quantity", { precision: 14, scale: 3 }),
   unitPrice: numeric("unit_price", { precision: 14, scale: 4 }),
   amount: numeric("amount", { precision: 14, scale: 2 }),
+});
+
+/**
+ * A saved ask-the-ledger thread. Scoped to a workspace like everything else
+ * (§10), so conversations don't leak between anonymous sessions.
+ */
+export const conversations = pgTable("conversations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: text("workspace_id").notNull(),
+  /** Derived from the opening question — a thread with no name is unfindable. */
+  title: text("title").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  /** Bumped on every turn, so the list can sort by most recently used. */
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * What the assistant answered, kept structurally rather than as prose.
+ *
+ * The rows themselves are deliberately *not* stored — only the ids that
+ * matched. A ledger row can be corrected after the fact, and replaying a
+ * stale copy of it would be exactly the kind of quietly-wrong answer this
+ * product exists to avoid. Re-reading by id shows today's truth; the
+ * interpretation and figures record what was said at the time.
+ */
+export interface StoredAnswer {
+  interpretation: string;
+  aggregateKind: QueryAggregate;
+  aggregateValue: number | null;
+  matchedDocumentIds: string[];
+  /** Filters the server could not apply — surfaced, never silently dropped. */
+  ignoredFilters: QueryFilter[];
+  /** Retained so a past question can be re-run rather than retyped. */
+  dsl: QueryDsl;
+}
+
+export const conversationMessages = pgTable("conversation_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => conversations.id, { onDelete: "cascade" }),
+  workspaceId: text("workspace_id").notNull(),
+  role: messageRole("role").notNull(),
+  /** The question as asked, or the assistant's interpretation of it. */
+  content: text("content").notNull(),
+  /** Assistant turns only; null on the user's side of the exchange. */
+  answer: jsonb("answer").$type<StoredAnswer>(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
 /**

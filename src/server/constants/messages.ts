@@ -1,4 +1,4 @@
-import { PROVIDER_KEY_VARS, EXTRACTION } from "./config";
+import { PROVIDER_KEY_VARS } from "./config";
 
 /** User-facing strings. Kept together so wording is reviewable in one place. */
 
@@ -36,6 +36,7 @@ export const API_MESSAGES = {
   fileTooLarge: (sizeMb: string, limitMb: number) =>
     `File is ${sizeMb}MB — the limit is ${limitMb}MB.`,
   documentNotFound: "Document not found",
+  conversationNotFound: "Conversation not found",
   notAcceptable: "Document not found or not in needs_review state",
   invalidCorrectionBody: "Send a JSON object of field → new value.",
   notCorrectable: (fields: string) => `Not correctable: ${fields}`,
@@ -117,5 +118,3 @@ ${FOCUSED_FIELD_RULES}`;
 
 export const TEXT_OMITTED_MARKER = (omitted: number) =>
   `\n\n[... ${omitted} characters omitted ...]\n\n`;
-
-export const MAX_TEXT_CHARS = EXTRACTION.maxTextChars;
