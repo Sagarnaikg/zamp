@@ -11,7 +11,7 @@ import { logger } from "./logger";
  * working, and drowning the sink in them is how real alerts get ignored.
  */
 
-export interface ErrorReport {
+interface ErrorReport {
   message: string;
   stack?: string;
   /** Where it happened: a component boundary name, a hook, a mutation. */

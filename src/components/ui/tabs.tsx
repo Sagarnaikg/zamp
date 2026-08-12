@@ -4,7 +4,7 @@ import { useRef, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
-export interface TabSpec<T extends string> {
+interface TabSpec<T extends string> {
   value: T;
   label: string;
   icon?: LucideIcon;

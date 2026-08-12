@@ -24,4 +24,3 @@ export const env: ClientEnv = clientEnvSchema.parse({
 });
 
 export const isProduction = env.environment === "production";
-export const isDevelopment = env.environment === "development";

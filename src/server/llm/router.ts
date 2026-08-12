@@ -16,7 +16,7 @@ const STRONG_TIER_TASKS: readonly LlmTask[] = [
 ];
 
 /** Error the API layer can turn into a setup message rather than a 500. */
-export class NoProviderError extends Error {
+class NoProviderError extends Error {
   constructor(problem: string) {
     super(problem);
     this.name = "NoProviderError";

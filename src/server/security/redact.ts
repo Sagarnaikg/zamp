@@ -17,7 +17,7 @@
 
 import { SensitiveKind } from "@/server/constants";
 
-export interface RedactionMatch {
+interface RedactionMatch {
   kind: SensitiveKind;
   /** Masked form, safe to display — e.g. "•••• •••• •••• 4417". */
   masked: string;

@@ -58,25 +58,3 @@ export function CardHeader({
     </div>
   );
 }
-
-/** Label above, figure below — the reference's stat rhythm. */
-export function Stat({
-  label,
-  value,
-  prefix,
-}: {
-  label: string;
-  value: string;
-  /** Currency mark, set apart from the figure as in the reference. */
-  prefix?: string;
-}) {
-  return (
-    <div className="space-y-1">
-      <p className="text-[13px] text-muted">{label}</p>
-      <p className="flex items-baseline gap-1 text-2xl font-semibold tracking-tight">
-        {prefix && <span className="text-lg font-medium text-muted">{prefix}</span>}
-        {value}
-      </p>
-    </div>
-  );
-}

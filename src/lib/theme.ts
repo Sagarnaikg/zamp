@@ -1,8 +1,8 @@
 import { Theme } from "@/constants";
 
-export const THEME_STORAGE_KEY = "zamp-theme";
+const THEME_STORAGE_KEY = "zamp-theme";
 /** The attribute the CSS overrides key off: `:root[data-theme="dark"]`. */
-export const THEME_ATTRIBUTE = "data-theme";
+const THEME_ATTRIBUTE = "data-theme";
 
 /**
  * Runs before first paint, ahead of React, so the page never renders in the
