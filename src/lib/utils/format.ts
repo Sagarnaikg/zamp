@@ -12,15 +12,26 @@ export function formatAmount(value: string | null, currency: string | null): str
   const amount = Number(value);
   if (Number.isNaN(amount)) return value;
 
+  if (!currency) {
+    // ¤ is the ISO-standard glyph for "currency unspecified" — a bare number
+    // reads as an assumed default (usually USD), which is a worse guess than
+    // admitting the currency wasn't found.
+    const decimal = new Intl.NumberFormat(undefined, {
+      style: "decimal",
+      minimumFractionDigits: 2,
+    }).format(amount);
+    return `¤${decimal}`;
+  }
+
   try {
     return new Intl.NumberFormat(undefined, {
-      style: currency ? "currency" : "decimal",
-      currency: currency ?? undefined,
+      style: "currency",
+      currency,
       minimumFractionDigits: 2,
     }).format(amount);
   } catch {
     // An unrecognised currency code is a data problem, not a reason to crash.
-    return `${currency ?? ""} ${amount.toFixed(2)}`.trim();
+    return `${currency} ${amount.toFixed(2)}`.trim();
   }
 }
 
