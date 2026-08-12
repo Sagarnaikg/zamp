@@ -1,212 +1,305 @@
 # Zamp — Invoice & Receipt Intelligence
 
-Turn messy invoices, receipts, and expense documents into a clean, queryable
-expense ledger — with field-level confidence you can actually defend, and a
-plain-language interface for asking questions about what's in it.
+Turn invoices, receipts, and expense documents into a clean, queryable expense ledger.
 
-> Every real decision made while building this — and why the alternatives
-> were rejected — is logged as it happened in [decisions.md](decisions.md).
-> This README is about running the thing; that file is about why it's built
-> the way it is.
+Zamp extracts invoice data, validates the extracted values, assigns field-level confidence, and sends uncertain fields for review. Once processed, documents can be browsed in a table or queried using plain English.
 
-## What is this?
+> **Want to understand the engineering decisions behind the project?**  
+> See the [project documentation](#documentation).
 
-Upload an invoice or receipt and the system extracts its fields, checks its
-own arithmetic, optionally cross-reads it with a second model, and scores
-each field's confidence independently — so the reviewer knows exactly which
-numbers to trust and which to check by eye. Accepted documents land in an
-expense ledger, browsable as a table or queryable in plain English ("how
-much did we spend on software last quarter?"), with every answer traceable
-back to the filters it ran and the documents it matched.
+---
 
-The core problem isn't "call an LLM to extract fields" — it's giving a
-finance user a reason to trust the output, given that no single extraction
-is ever 100% reliable.
+## What does it do?
 
-## Architecture
+The system is built around a simple flow:
 
-- **One Next.js app, not a separate frontend/backend.** App Router pages and
-  API routes live in the same codebase and deploy together.
-- **Multi-provider LLM routing, provider-agnostic by design.** LangChain
-  gives every provider one interface, so extraction code never branches on
-  which one is active. Google, OpenAI, and Anthropic ship out of the box
-  (development used Google + OpenAI together); adding another is a
-  self-contained change, not a rewrite — see [Adding an LLM provider](#adding-an-llm-provider).
-  Only one provider key is required to run the app at all — the app
-  discovers which models your account can actually reach at startup rather
-  than hardcoding model IDs — and configuring a second automatically
-  strengthens the confidence engine (see below) via cross-provider
-  agreement.
-- **The confidence engine** combines four independent signals per field —
-  arithmetic reconciliation, format/plausibility, cross-model agreement, and
-  duplicate detection — into a confidence score, with an escalation ladder
-  that settles disagreements with a focused third reading before handing
-  anything unresolved to a human.
-- **Every ingestion run is traced** stage by stage (what ran, what was
-  skipped and why, which model, what it cost) and rendered as a graph in the
-  review UI — not just logged, but shown.
-- **No accounts.** Workspaces are anonymous and per-browser, via an httpOnly
-  cookie set on first visit — the seam where real auth would attach later.
-- **Ask-the-ledger conversations persist.** Questions and answers (the
-  filters that actually ran, not the model's restatement of them) are stored
-  per thread, so a conversation survives a reload and can be reopened
-  without re-asking.
+1. Upload an invoice or receipt.
+2. Extract its fields using an LLM.
+3. Validate the extracted values and calculate confidence per field.
+4. Re-check uncertain fields when needed.
+5. Review anything that still looks unreliable.
+6. Store accepted documents in a queryable expense ledger.
+7. Ask questions about the ledger using plain English.
 
-## Tech stack
+The main goal is not just extraction — it's making the extracted data **trustworthy and reviewable**.
 
-| | |
+---
+
+## Features
+
+- 📄 Invoice and receipt upload
+- 🔍 LLM-based document extraction
+- 🎯 Field-level confidence scoring
+- ✅ Arithmetic and format validation
+- 🔄 Optional cross-provider verification
+- 👀 Manual review for uncertain fields
+- 📊 Queryable expense ledger
+- 💬 Natural-language questions about expenses
+- 🧾 Traceable extraction and query results
+- 🧪 Sample documents for testing
+
+---
+
+## Tech Stack
+
+| Area | Technology |
 |---|---|
-| Framework | Next.js 16 (App Router), React 19, TypeScript |
-| Database | PostgreSQL via Drizzle ORM |
-| LLM | LangChain's unified chat-model interface — any provider works, ships with Google Gemini, OpenAI, Anthropic |
-| Validation | Zod — both LLM structured output and the NL→SQL-safe query DSL |
-| Frontend state | TanStack Query (server state) + Zustand (the one piece of client-only global state) |
-| Styling | Tailwind CSS v4 + Framer Motion |
+| Framework | Next.js, React, TypeScript |
+| Database | PostgreSQL + Drizzle ORM |
+| LLM | LangChain |
+| Validation | Zod |
+| Server State | TanStack Query |
+| Client State | Zustand |
+| Styling | Tailwind CSS |
 | Forms | React Hook Form |
 | Testing | Vitest + Testing Library |
-| File storage | Local disk by default; Vercel Blob if `BLOB_READ_WRITE_TOKEN` is set (auto-selected, optional either way) |
+| File Storage | Local disk / Vercel Blob |
+
+---
 
 ## Prerequisites
 
-- **Node.js ≥ 20.9** (required by Next.js 16) and npm
-- **A PostgreSQL database** — any instance, any way you run it. A connection
-  string is all the app needs.
-- **At least one LLM provider API key.** Ships with Google, OpenAI, and
-  Anthropic; not locked to these three — see [Adding an LLM provider](#adding-an-llm-provider).
+You'll need:
 
-## Environment variables
+- **Node.js ≥ 20.9**
+- **npm**
+- **PostgreSQL**
+- **At least one supported LLM API key**
 
-Create a `.env` file in the project root with:
+The project currently supports Google Gemini, OpenAI, and Anthropic.
 
-| Variable | Required | Notes |
-|---|---|---|
-| `DATABASE_URL` | Yes | Any Postgres connection string, e.g. `postgres://zamp:zamp@localhost:5432/zamp_dev`. |
-| `GOOGLE_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | At least one | Models are discovered per provider at startup — no model IDs to configure. A second key improves confidence scoring via cross-provider agreement. |
-| `BLOB_READ_WRITE_TOKEN` | No | Optional managed file storage (Vercel Blob). Unset by default — uploads go to `./uploads` on disk, which works anywhere. |
-| `NEXT_PUBLIC_API_BASE_URL` | No | Client-side API base URL. Leave unset for same-origin (the normal case). |
-| `NEXT_PUBLIC_ERROR_REPORTING_URL` | No | Where client-side error reports are POSTed. Leave unset to disable. |
+You only need **one provider** to run the application. Adding more providers enables cross-provider verification for better confidence scoring.
 
-Check setup at any time with `GET /api/status`: it reports which providers
-were found, which models they resolved to, and a plain-English problem
-message if nothing usable was reachable.
+---
 
-## Local setup
+## Local Setup
+
+The goal is to get the project running with as little setup as possible.
+
+### 1. Clone the repository
 
 ```bash
-# Postgres: `docker compose up -d` for a one-command local instance,
-# or point DATABASE_URL at any Postgres you already have.
+git clone <repository-url>
+cd zamp
+```
+
+### 2. Install dependencies
+
+```bash
 npm install
+```
+
+### 3. Configure environment variables
+
+Create a `.env` file in the project root:
+
+```env
+DATABASE_URL=postgres://zamp:zamp@localhost:5432/zamp_dev
+
+GOOGLE_API_KEY=your_key
+# OPENAI_API_KEY=your_key
+# ANTHROPIC_API_KEY=your_key
+```
+
+Only **one LLM provider key is required**.
+
+For optional managed file storage:
+
+```env
+BLOB_READ_WRITE_TOKEN=your_token
+```
+
+Without this, files are stored locally in `./uploads`.
+
+### 4. Start PostgreSQL
+
+If you don't already have PostgreSQL running:
+
+```bash
+docker compose up -d
+```
+
+Or use any PostgreSQL instance and set its connection string in `DATABASE_URL`.
+
+### 5. Run database migrations
+
+```bash
 npm run db:migrate
+```
+
+### 6. Start the application
+
+```bash
 npm run dev
 ```
 
-The app is now running at [http://localhost:3000](http://localhost:3000).
+The application will be available at:
 
-## Running the app
+**http://localhost:3000**
 
-There's a single dev server — Next.js serves the pages and the API routes
-together, so `npm run dev` is the only thing to run.
+That's it. The frontend and backend run from the same Next.js application.
 
-```bash
-npm run dev      # start the dev server (http://localhost:3000)
-npm run build    # production build
-npm run start    # run a production build locally (after `npm run build`)
-```
+---
 
-## Running tests
+## Useful Commands
+
+### Development
 
 ```bash
-npm test          # unit tests (Vitest) — server logic and UI components
-npm run typecheck # TypeScript, no output emitted
-npm run lint      # ESLint
+npm run dev
 ```
 
-Tests live under `tests/`, mirroring the `src/` tree they cover, split into a
-Node-environment project for server logic and a jsdom project for components.
-
-## Database
+### Production build
 
 ```bash
-npm run db:generate   # generate a migration from schema.ts changes
-npm run db:migrate     # apply pending migrations
+npm run build
+npm run start
 ```
 
-Schema lives in `src/server/db/schema.ts`; generated SQL migrations live in
-`src/server/db/migrations/`.
+### Tests
 
-## Adding an LLM provider
-
-The app ships with Google, OpenAI, and Anthropic — deliberately not an
-open-ended plugin system, since each provider needs a LangChain integration
-package anyway, which makes adding one a code change regardless.
-
-Everything provider-specific lives in `src/server/llm/providers.ts`. Adding a
-fourth is one entry there, plus its key variable:
-
-1. **Install the integration:** `npm install @langchain/<provider>`
-
-2. **Extend the union** in `providers.ts`:
-   ```ts
-   export type Provider = "google" | "openai" | "anthropic" | "mistral";
-   ```
-   This is the useful part: `PROVIDERS` and `PROVIDER_KEY_VARS` are both
-   `Record<Provider, …>`, so **the build now fails until every required piece
-   is filled in.** The compiler walks you through the rest rather than letting
-   you half-add a provider.
-
-3. **Add it to `PROVIDER_ORDER`** — this is the preference order when several
-   providers are configured; the first is used for primary extraction.
-
-4. **Add its `PROVIDERS` entry**, which answers five questions:
-   - `listUrl` / `listHeaders` / `parseModels` — how to ask the provider which
-     models this account can use (that's what runtime discovery calls)
-   - `include` / `exclude` — which of those model IDs are general-purpose chat
-     models, versus embeddings, TTS, image generation, etc.
-   - `cheapPreference` / `strongPreference` — ordered regex lists; the first
-     pattern that matches an available model wins that tier
-   - `create` — build a LangChain chat client for a model ID + key
-
-5. **Add the key variable** to `PROVIDER_KEY_VARS` in `capabilities.ts`
-   (e.g. `mistral: "MISTRAL_API_KEY"`).
-
-6. **Only if the provider needs a non-standard attachment format**, add a case
-   to `fileBlock()` in `extraction.ts`. Most providers accept LangChain's
-   standard file/image blocks; Google is special-cased there because
-   `@langchain/google-genai` gates standard file blocks behind a model-name
-   check that rejects its own `-latest` aliases.
-
-Nothing else changes — the router, confidence engine, and services are all
-provider-agnostic. There are no model IDs to pin: discovery asks the provider
-what the account can reach and ranks the answer into tiers.
-
-## Project structure
-
+```bash
+npm test
 ```
+
+### Type checking
+
+```bash
+npm run typecheck
+```
+
+### Linting
+
+```bash
+npm run lint
+```
+
+### Database
+
+```bash
+npm run db:generate
+npm run db:migrate
+```
+
+---
+
+## Sample Documents
+
+The repository includes sample invoices and receipts in:
+
+```text
+samples/
+```
+
+These can be used to quickly test the extraction and review flow without having to provide your own documents.
+
+---
+
+## Project Structure
+
+```text
 src/
-├── app/               # Routing layer — Next.js pages + API endpoints, kept thin
-│   └── api/           #   HTTP only: parse request → call service → shape response
-├── components/        # Presentation layer
-│   ├── ui/            #   Design system — generic, knows nothing about invoices
-│   ├── domain/        #   Shared across features, meaningless outside this product
-│   └── layout/        #   App shell, navigation
-├── features/          # Feature layer — api + hooks + types per feature
-├── config/            # Validated client env + feature flags
-├── constants/         # Client-side constants (routes, UI enums, copy)
-├── lib/               # API client, query client, observability, utils
-├── server/            # Backend layer — never imported by client code
-│   ├── services/      #   Business logic / use-cases (ingestion, review, query, conversations)
-│   ├── constants/     #   Enums + config + user-facing messages, single source of truth
-│   ├── db/            #   Drizzle schema + client + SQL migrations
-│   ├── storage/       #   File storage drivers (local disk / Vercel Blob)
-│   ├── llm/           #   ML layer: model router, extraction, query translation
-│   ├── ingest/        #   File-kind detection (digital PDF vs scan vs image)
-│   └── confidence/    #   Field-level confidence engine (signals + reasons)
-└── middleware.ts      # Anonymous per-browser workspace cookie
+├── app/             # Pages and API routes
+├── components/      # Reusable UI components
+├── features/        # Feature-specific UI, hooks and types
+├── config/          # Client configuration
+├── lib/             # Shared client utilities
+│
+├── server/          # Backend logic
+│   ├── services/    # Business logic
+│   ├── db/          # Database schema and migrations
+│   ├── storage/     # File storage
+│   ├── llm/         # LLM routing and extraction
+│   ├── ingest/      # Document processing
+│   └── confidence/  # Confidence and validation engine
+│
+└── middleware.ts
 
-tests/                 # Unit tests, mirroring the src/ tree (e.g. tests/server/llm/errors.test.ts)
-samples/               # Test/demo documents with known planted problems
+tests/               # Automated tests
+samples/             # Sample documents
 ```
 
-Root config files (`package.json`, `tsconfig.json`, `next.config.ts`,
-`drizzle.config.ts`, `eslint.config.mjs`, `postcss.config.mjs`,
-`docker-compose.yml`) stay at the root — that's where their tools look for them.
+The project keeps the frontend and backend in one Next.js application to keep local setup and deployment simple.
+
+---
+
+## Architecture
+
+At a high level:
+
+```text
+Invoice / Receipt
+       ↓
+Document Processing
+       ↓
+LLM Extraction
+       ↓
+Validation & Confidence
+       ↓
+ ┌─────┴─────┐
+ │           │
+Trusted    Uncertain
+ │           │
+ ↓           ↓
+Ledger    Re-check
+             ↓
+          Human Review
+```
+
+The confidence engine evaluates fields independently rather than assigning one confidence score to the entire document.
+
+This allows the system to say:
+
+```text
+Invoice Number  → High confidence
+Invoice Date    → High confidence
+Total           → High confidence
+GSTIN           → Needs review
+```
+
+instead of making the user review the entire invoice.
+
+---
+
+## LLM Providers
+
+The application is designed around a provider-independent LLM interface.
+
+You can configure one or more supported providers through environment variables. Multiple providers can be used together for cross-provider verification.
+
+For details on how provider selection, model discovery, extraction, and confidence scoring work, see the full documentation.
+
+---
+
+## Documentation
+
+The full project documentation covers:
+
+- Problem statement and scope
+- System architecture
+- Invoice extraction pipeline
+- Confidence and verification strategy
+- Database design
+- Natural-language querying
+- Important engineering decisions
+- Trade-offs and alternatives considered
+
+**[Read the full documentation →](<documentation-url>)**
+
+---
+
+## Live Demo
+
+**[Open the application →](<vercel-url>)**
+
+---
+
+## Project Notes
+
+This project was built as a take-home assignment with a focus on:
+
+- Keeping local setup simple
+- Building a provider-independent extraction pipeline
+- Making extraction errors visible rather than hiding them
+- Using validation and verification before asking for human input
+- Keeping the codebase modular and easy to extend
