@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.title | default: site.title }} — Zamp Docs</title>
+  <meta name="description" content="{{ site.description }}">
+  <script>
+    (function () {
+      try {
+        var stored = localStorage.getItem("zamp-docs-theme");
+        var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var theme = stored || (prefersDark ? "dark" : "light");
+        document.documentElement.setAttribute("data-theme", theme);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
+  <header class="site-header">
+    <a class="brand" href="{{ '/' | relative_url }}">
+      <span class="brand-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 16.87a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9a1 1 0 0 0 .59-.92"/></svg>
+      </span>
+      <span class="brand-text">
+        <span class="brand-title">Zamp</span>
+        <span class="brand-subtitle">Documentation</span>
+      </span>
+    </a>
+    <nav class="header-actions">
+      <a class="header-link" href="https://github.com/Sagarnaikg/zamp">GitHub</a>
+      <a class="header-link" href="https://zamp-ten.vercel.app/">Live demo</a>
+      <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <div class="shell">
+    <button type="button" class="mobile-nav-toggle" id="mobile-nav-toggle" aria-expanded="false" aria-controls="sidebar">
+      <span>Contents</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+
+    <aside class="sidebar" id="sidebar">
+      <p class="sidebar-label">Contents</p>
+      <ul class="sidebar-nav">
+        {% assign pages = "index.md,01-problem-and-scope.md,02-architecture.md,03-extraction-pipeline.md,04-confidence-engine.md,05-database-design.md,06-natural-language-query.md,07-engineering-decisions.md,08-scope-and-tradeoffs.md" | split: "," %}
+        {% assign titles = "Overview,Problem & Scope,Architecture,Extraction Pipeline,Confidence Engine,Database Design,NL Querying,Engineering Decisions,Scope & Trade-offs" | split: "," %}
+        {% for entry in pages %}
+          {% assign idx = forloop.index0 %}
+          {% assign title = titles[idx] %}
+          {%- comment -%}
+            page.name is the source filename (e.g. "02-architecture.md"),
+            stable across baseurl and independent of index.md's special
+            "/" url — the only reliable way to detect the active page.
+          {%- endcomment -%}
+          <li>
+            <a href="{{ entry | replace: '.md', '.html' | relative_url }}"
+               class="sidebar-link{% if page.name == entry %} active{% endif %}">
+              {{ title }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+      <a class="sidebar-repo-link" href="https://github.com/Sagarnaikg/zamp/blob/main/decisions.md">Full decisions log ↗</a>
+    </aside>
+
+    <main class="content" id="main-content">
+      <article class="prose">
+        {{ content }}
+      </article>
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <p>Zamp — built for a take-home assignment. <a href="https://github.com/Sagarnaikg/zamp">Source on GitHub</a>.</p>
+  </footer>
+
+  <script>
+    (function () {
+      var STORAGE_KEY = "zamp-docs-theme";
+      var toggle = document.getElementById("theme-toggle");
+      toggle.addEventListener("click", function () {
+        var current = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+        var next = current === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        try { localStorage.setItem(STORAGE_KEY, next); } catch (e) {}
+      });
+
+      var navToggle = document.getElementById("mobile-nav-toggle");
+      var sidebar = document.getElementById("sidebar");
+      navToggle.addEventListener("click", function () {
+        var open = sidebar.classList.toggle("open");
+        navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      });
+    })();
+  </script>
+</body>
+</html>

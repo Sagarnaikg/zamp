@@ -1,5 +1,15 @@
 title: Zamp
 description: How this invoice/receipt intelligence system was built — the problem, the pipeline, the confidence engine, and the calls made along the way.
-theme: jekyll-theme-cayman
 markdown: kramdown
-show_downloads: false
+kramdown:
+  auto_ids: true
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: true
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: "default"
