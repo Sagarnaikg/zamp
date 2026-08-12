@@ -290,16 +290,7 @@ The full project documentation covers:
 
 ## Live Demo
 
-**[Open the application →](<vercel-url>)**
+**[Open the application →](https://zamp-ten.vercel.app/)**
 
----
 
-## Project Notes
 
-This project was built as a take-home assignment with a focus on:
-
-- Keeping local setup simple
-- Building a provider-independent extraction pipeline
-- Making extraction errors visible rather than hiding them
-- Using validation and verification before asking for human input
-- Keeping the codebase modular and easy to extend
