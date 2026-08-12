@@ -13,14 +13,16 @@ export function formatAmount(value: string | null, currency: string | null): str
   if (Number.isNaN(amount)) return value;
 
   if (!currency) {
-    // ¤ is the ISO-standard glyph for "currency unspecified" — a bare number
-    // reads as an assumed default (usually USD), which is a worse guess than
-    // admitting the currency wasn't found.
+    // Plain text, not a symbol: the ISO placeholder glyph for "no currency"
+    // (¤) is obscure enough that most fonts render it distractingly, and it
+    // reads as a rendering bug rather than an intentional "unknown" marker.
+    // A bare number is still wrong for the same reason as before — it reads
+    // as an assumed default (usually USD) — so this says so in words instead.
     const decimal = new Intl.NumberFormat(undefined, {
       style: "decimal",
       minimumFractionDigits: 2,
     }).format(amount);
-    return `¤${decimal}`;
+    return `${decimal} (currency unknown)`;
   }
 
   try {
