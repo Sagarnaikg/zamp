@@ -94,7 +94,7 @@ npm install
 Create a `.env` file in the project root:
 
 ```env
-DATABASE_URL=<db_url>
+DATABASE_URL=db_url
 
 GOOGLE_API_KEY=your_key
 # OPENAI_API_KEY=your_key
@@ -159,88 +159,135 @@ npm run start
 ### Tests
 
 ```bash
-npm run db:generate   # generate a migration from schema.ts changes
-npm run db:migrate     # apply pending migrations
+npm test
 ```
 
-Schema lives in `src/server/db/schema.ts`; generated SQL migrations live in
-`src/server/db/migrations/`.
+### Type checking
 
-## Adding an LLM provider
-
-The app ships with Google, OpenAI, and Anthropic — deliberately not an
-open-ended plugin system, since each provider needs a LangChain integration
-package anyway, which makes adding one a code change regardless.
-
-Everything provider-specific lives in `src/server/llm/providers.ts`. Adding a
-fourth is one entry there, plus its key variable:
-
-1. **Install the integration:** `npm install @langchain/<provider>`
-
-2. **Extend the union** in `providers.ts`:
-
-   ```ts
-   export type Provider = "google" | "openai" | "anthropic" | "mistral";
-   ```
-
-   This is the useful part: `PROVIDERS` and `PROVIDER_KEY_VARS` are both
-   `Record<Provider, …>`, so **the build now fails until every required piece
-   is filled in.** The compiler walks you through the rest rather than letting
-   you half-add a provider.
-
-3. **Add it to `PROVIDER_ORDER`** — this is the preference order when several
-   providers are configured; the first is used for primary extraction.
-
-4. **Add its `PROVIDERS` entry**, which answers five questions:
-   - `listUrl` / `listHeaders` / `parseModels` — how to ask the provider which
-     models this account can use (that's what runtime discovery calls)
-   - `include` / `exclude` — which of those model IDs are general-purpose chat
-     models, versus embeddings, TTS, image generation, etc.
-   - `cheapPreference` / `strongPreference` — ordered regex lists; the first
-     pattern that matches an available model wins that tier
-   - `create` — build a LangChain chat client for a model ID + key
-
-5. **Add the key variable** to `PROVIDER_KEY_VARS` in `capabilities.ts`
-   (e.g. `mistral: "MISTRAL_API_KEY"`).
-
-6. **Only if the provider needs a non-standard attachment format**, add a case
-   to `fileBlock()` in `extraction.ts`. Most providers accept LangChain's
-   standard file/image blocks; Google is special-cased there because
-   `@langchain/google-genai` gates standard file blocks behind a model-name
-   check that rejects its own `-latest` aliases.
-
-Nothing else changes — the router, confidence engine, and services are all
-provider-agnostic. There are no model IDs to pin: discovery asks the provider
-what the account can reach and ranks the answer into tiers.
-
-## Project structure
-
+```bash
+npm run typecheck
 ```
+
+### Linting
+
+```bash
+npm run lint
+```
+
+### Database
+
+```bash
+npm run db:generate
+npm run db:migrate
+```
+
+---
+
+## Sample Documents
+
+The repository includes sample invoices and receipts in:
+
+```text
+samples/
+```
+
+These can be used to quickly test the extraction and review flow without having to provide your own documents.
+
+---
+
+## Project Structure
+
+```text
 src/
-├── app/               # Routing layer — Next.js pages + API endpoints, kept thin
-│   └── api/           #   HTTP only: parse request → call service → shape response
-├── components/        # Presentation layer
-│   ├── ui/            #   Design system — generic, knows nothing about invoices
-│   ├── domain/        #   Shared across features, meaningless outside this product
-│   └── layout/        #   App shell, navigation
-├── features/          # Feature layer — api + hooks + types per feature
-├── config/            # Validated client env + feature flags
-├── constants/         # Client-side constants (routes, UI enums, copy)
-├── lib/               # API client, query client, observability, utils
-├── server/            # Backend layer — never imported by client code
-│   ├── services/      #   Business logic / use-cases (ingestion, review, query, conversations)
-│   ├── constants/     #   Enums + config + user-facing messages, single source of truth
-│   ├── db/            #   Drizzle schema + client + SQL migrations
-│   ├── storage/       #   File storage drivers (local disk / Vercel Blob)
-│   ├── llm/           #   ML layer: model router, extraction, query translation
-│   ├── ingest/        #   File-kind detection (digital PDF vs scan vs image)
-│   └── confidence/    #   Field-level confidence engine (signals + reasons)
-└── middleware.ts      # Anonymous per-browser workspace cookie
+├── app/             # Pages and API routes
+├── components/      # Reusable UI components
+├── features/        # Feature-specific UI, hooks and types
+├── config/          # Client configuration
+├── lib/             # Shared client utilities
+│
+├── server/          # Backend logic
+│   ├── services/    # Business logic
+│   ├── db/          # Database schema and migrations
+│   ├── storage/     # File storage
+│   ├── llm/         # LLM routing and extraction
+│   ├── ingest/      # Document processing
+│   └── confidence/  # Confidence and validation engine
+│
+└── middleware.ts
 
-tests/                 # Unit tests, mirroring the src/ tree (e.g. tests/server/llm/errors.test.ts)
-public/samples/        # Demo documents with known planted problems, downloadable from the upload panel
+tests/               # Automated tests
+samples/             # Sample documents
 ```
 
-Root config files (`package.json`, `tsconfig.json`, `next.config.ts`,
-`drizzle.config.ts`, `eslint.config.mjs`, `postcss.config.mjs`,
-`docker-compose.yml`) stay at the root — that's where their tools look for them.
+The project keeps the frontend and backend in one Next.js application to keep local setup and deployment simple.
+
+---
+
+## Architecture
+
+At a high level:
+
+```text
+Invoice / Receipt
+       ↓
+Document Processing
+       ↓
+LLM Extraction
+       ↓
+Validation & Confidence
+       ↓
+ ┌─────┴─────┐
+ │           │
+Trusted    Uncertain
+ │           │
+ ↓           ↓
+Ledger    Re-check
+             ↓
+          Human Review
+```
+
+The confidence engine evaluates fields independently rather than assigning one confidence score to the entire document.
+
+This allows the system to say:
+
+```text
+Invoice Number  → High confidence
+Invoice Date    → High confidence
+Total           → High confidence
+GSTIN           → Needs review
+```
+
+instead of making the user review the entire invoice.
+
+---
+
+## LLM Providers
+
+The application is designed around a provider-independent LLM interface.
+
+You can configure one or more supported providers through environment variables. Multiple providers can be used together for cross-provider verification.
+
+For details on how provider selection, model discovery, extraction, and confidence scoring work, see the full documentation.
+
+---
+
+## Documentation
+
+The full project documentation covers:
+
+- Problem statement and scope
+- System architecture
+- Invoice extraction pipeline
+- Confidence and verification strategy
+- Database design
+- Natural-language querying
+- Important engineering decisions
+- Trade-offs and alternatives considered
+
+**[Read the full documentation →](documentation-url)**
+
+---
+
+## Live Demo
+
+**[Open the application →](https://zamp-ten.vercel.app/)**
