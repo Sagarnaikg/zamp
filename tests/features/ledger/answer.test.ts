@@ -48,15 +48,17 @@ function answerMessage(
  */
 describe("formatAnswerFigure", () => {
   it("formats a money aggregate using the matched rows' currency", () => {
-    expect(formatAnswerFigure(answerMessage(QueryAggregate.SumTotal, 250))).toBe(
+    expect(formatAnswerFigure(answerMessage(QueryAggregate.SumTotal, 250))?.text).toBe(
       "$250.00",
     );
   });
 
   it("renders a count as a plain number, never dressed as currency", () => {
     const figure = formatAnswerFigure(answerMessage(QueryAggregate.Count, 3));
-    expect(figure).toBe("3");
-    expect(figure).not.toContain("$");
+    expect(figure?.text).toBe("3");
+    expect(figure?.text).not.toContain("$");
+    // A count has no currency to be unsure about, so it must never be marked.
+    expect(figure?.currencyUnknown).toBe(false);
   });
 
   it("shows nothing when nothing matched, rather than a fabricated $0.00", () => {
@@ -77,11 +79,23 @@ describe("formatAnswerFigure", () => {
 
   it("follows the rows' own currency rather than assuming dollars", () => {
     const inr = [row({ currency: "INR", total: "500.00" })];
-    expect(formatAnswerFigure(answerMessage(QueryAggregate.SumTotal, 500, inr))).toContain(
-      "500",
+    const figure = formatAnswerFigure(answerMessage(QueryAggregate.SumTotal, 500, inr));
+    expect(figure?.text).toContain("500");
+    expect(figure?.text).not.toContain("$");
+    expect(figure?.currencyUnknown).toBe(false);
+  });
+
+  /**
+   * The case that reaches production: a document whose currency genuinely
+   * isn't printed anywhere. The figure must stay a clean number — the caller
+   * marks it — rather than carrying prose into a headline.
+   */
+  it("marks a money figure whose rows have no currency, without altering the number", () => {
+    const noCurrency = [row({ currency: null, total: "346.80" })];
+    const figure = formatAnswerFigure(
+      answerMessage(QueryAggregate.SumTotal, 693.6, noCurrency),
     );
-    expect(formatAnswerFigure(answerMessage(QueryAggregate.SumTotal, 500, inr))).not.toContain(
-      "$",
-    );
+    expect(figure?.text).toBe("693.60");
+    expect(figure?.currencyUnknown).toBe(true);
   });
 });
