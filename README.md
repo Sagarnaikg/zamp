@@ -79,7 +79,7 @@ The goal is to get the project running with as little setup as possible.
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Sagarnaikg/zamp.git
 cd zamp
 ```
 
