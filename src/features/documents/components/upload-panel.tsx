@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type DragEvent } from "react";
-import { Download, UploadCloud, X } from "lucide-react";
+import { ChevronRight, Download, UploadCloud, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -93,18 +93,30 @@ function UploadListItem({
 }
 
 /**
- * A way in for someone with no invoice of their own to hand. Each sample
- * reaches a different path through the pipeline, so the descriptions say what
- * a sample is for rather than just naming the file.
+ * A way in for someone with no invoice of their own to hand. Collapsed by
+ * default — bringing your own document is the real path, and four described
+ * samples expanded pushed the drop zone off the screen.
  *
- * Plain anchors with `download` — these are static files, so there's nothing
- * for the client to do beyond pointing at them.
+ * Each sample reaches a different path through the pipeline, so the
+ * descriptions say what a sample is for rather than just naming the file.
+ * Plain anchors with `download`: these are static files, so there's nothing
+ * for the client to do beyond pointing at them. A native <details> for the
+ * same reason as §17's extra fields — keyboard and screen-reader behaviour
+ * come free.
  */
 function SampleDownloads() {
   return (
-    <div className="mx-auto mt-8 max-w-2xl border-t border-border pt-6">
-      <p className="text-[13px] text-muted">{SAMPLES.prompt}</p>
-      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+    <details className="group mt-8">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-full text-[13px] text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          className="size-4 transition-transform group-open:rotate-90"
+          strokeWidth={2}
+          aria-hidden
+        />
+        {SAMPLES.prompt}
+      </summary>
+
+      <ul className="mx-auto mt-4 grid max-w-2xl gap-2 sm:grid-cols-2">
         {SAMPLE_DOCUMENTS.map((sample) => (
           <li key={sample.filename}>
             <a
@@ -129,7 +141,7 @@ function SampleDownloads() {
           </li>
         ))}
       </ul>
-    </div>
+    </details>
   );
 }
 

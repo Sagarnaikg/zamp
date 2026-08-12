@@ -28,7 +28,7 @@ export const ERROR_STATES = {
 } as const;
 
 export const SAMPLES = {
-  prompt: "No invoice handy? Download a sample and upload it:",
+  prompt: "No invoice handy? Try a sample",
 } as const;
 
 export const ACTIONS = {
