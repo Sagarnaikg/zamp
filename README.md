@@ -267,7 +267,7 @@ The application is designed around a provider-independent LLM interface.
 
 You can configure one or more supported providers through environment variables. Multiple providers can be used together for cross-provider verification.
 
-For details on how provider selection, model discovery, extraction, and confidence scoring work, see the full documentation.
+For details on how provider selection, model discovery, extraction, and confidence scoring work, see the [full documentation](https://sagarnaikg.github.io/zamp/02-architecture.html).
 
 ---
 
@@ -284,7 +284,7 @@ The full project documentation covers:
 - Important engineering decisions
 - Trade-offs and alternatives considered
 
-**[Read the full documentation →](documentation-url)**
+**[Read the full documentation →](https://sagarnaikg.github.io/zamp/)**
 
 ---
 
