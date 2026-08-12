@@ -8,12 +8,21 @@ import type { PipelineViewNode } from "@/server/ingest/trace";
  */
 
 export const NODE_WIDTH = 252;
-export const NODE_HEIGHT = 172;
+/**
+ * Tall enough for the worst case: branch/phase label (24) + card padding
+ * (32) + icon/title row (34) + gap (12) + a fully 3-line-clamped detail box
+ * with its own label and padding (~96) + gap (12) + status/token footer
+ * (24) ≈ 234, plus a real margin so it isn't a razor's edge. 172, then 220,
+ * both undershot this and either spilled into the next card or — once
+ * overflow-hidden was added to stop that — silently clipped the footer
+ * badge instead.
+ */
+export const NODE_HEIGHT = 256;
 const GAP_X = 76;
 const GAP_Y = 28;
 const PADDING = 32;
 
-export interface PositionedNode {
+interface PositionedNode {
   node: PipelineViewNode;
   x: number;
   y: number;

@@ -1,13 +1,21 @@
+import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils/cn";
 
 /**
  * Placeholder matching the shape of what's loading. Preferred over a spinner
  * for lists and tables — the layout doesn't jump when real data lands.
  */
-export function Skeleton({ className }: { className?: string }) {
+export function Skeleton({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: CSSProperties;
+}) {
   return (
     <div
       aria-hidden
+      style={style}
       className={cn("animate-pulse rounded bg-surface-raised", className)}
     />
   );

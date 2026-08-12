@@ -6,11 +6,19 @@ export interface PageHeaderProps {
   title: string;
   subtitle?: string;
   back?: { href: string; label: string };
+  /** Rendered beside the title, e.g. a status pill — stays with the title on the left. */
+  titleBadge?: ReactNode;
   actions?: ReactNode;
 }
 
 /** Breadcrumb, display title, actions pushed right — the reference's page head. */
-export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  subtitle,
+  back,
+  titleBadge,
+  actions,
+}: PageHeaderProps) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4 px-1 pb-6 pt-4">
       <div className="min-w-0">
@@ -23,10 +31,13 @@ export function PageHeader({ title, subtitle, back, actions }: PageHeaderProps) 
             {back.label}
           </Link>
         )}
-        <h1 className="truncate text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          {title}
-        </h1>
-        {subtitle && <p className="mt-1.5 truncate text-sm text-muted">{subtitle}</p>}
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="truncate text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+            {title}
+          </h1>
+          {titleBadge}
+        </div>
+        {subtitle && <p className="mt-1 truncate text-[13px] text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2.5">{actions}</div>}
     </div>

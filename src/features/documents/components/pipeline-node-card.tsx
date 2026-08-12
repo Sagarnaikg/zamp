@@ -49,7 +49,12 @@ export function PipelineNodeCard({ node }: { node: PipelineViewNode }) {
     node.provider && node.model ? `${node.provider} · ${node.model}` : node.phase;
 
   return (
-    <div style={{ width: NODE_WIDTH, height: NODE_HEIGHT }} className="flex flex-col">
+    <div
+      style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}
+      // Clips rather than spills into the next stacked card if content ever
+      // runs longer than expected — the fixed height is a budget, not a hope.
+      className="flex flex-col overflow-hidden"
+    >
       <div className="mb-2 flex items-center gap-1.5 px-1">
         <span className={cn("size-1.5 rounded-full", DOT_STYLES[node.status])} aria-hidden />
         <span className="text-[11px] font-medium uppercase tracking-wider text-muted">

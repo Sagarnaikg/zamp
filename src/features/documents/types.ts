@@ -16,7 +16,7 @@ import type { PipelineView } from "@/server/ingest/trace";
 export type DocumentSummary = Omit<typeof documents.$inferSelect, "pipeline">;
 
 export type Extraction = typeof extractions.$inferSelect;
-export type LineItem = typeof lineItems.$inferSelect;
+type LineItem = typeof lineItems.$inferSelect;
 export type AuditLogEntry = typeof auditLogs.$inferSelect;
 
 export interface DocumentDetail {

@@ -24,10 +24,13 @@ export function LedgerSummary({ rows }: { rows: LedgerRow[] }) {
   const vendors = new Set(rows.map((row) => row.vendor).filter(Boolean)).size;
 
   return (
-    <div className="grid gap-5 sm:grid-cols-3">
-      <Card inverse className="p-6">
+    // All three cards stretch to the same height by default (a currency-heavy
+    // total can run to several lines); content stays pinned top-left rather
+    // than centering into whatever extra room that leaves.
+    <div className="grid gap-4 sm:grid-cols-3">
+      <Card inverse className="p-5">
         <p className="text-[13px] text-surface-inverse-foreground/60">Total accepted</p>
-        <div className="mt-2 space-y-1">
+        <div className="mt-1.5 space-y-0.5">
           {totals.length === 0 ? (
             <p className="text-2xl font-semibold tracking-tight">—</p>
           ) : (
@@ -40,14 +43,14 @@ export function LedgerSummary({ rows }: { rows: LedgerRow[] }) {
         </div>
       </Card>
 
-      <Card className="p-6">
+      <Card className="p-5">
         <p className="text-[13px] text-muted">Documents</p>
-        <p className="mt-2 text-2xl font-semibold tracking-tight">{rows.length}</p>
+        <p className="mt-1.5 text-2xl font-semibold tracking-tight">{rows.length}</p>
       </Card>
 
-      <Card className="p-6">
+      <Card className="p-5">
         <p className="text-[13px] text-muted">Vendors</p>
-        <p className="mt-2 text-2xl font-semibold tracking-tight">{vendors}</p>
+        <p className="mt-1.5 text-2xl font-semibold tracking-tight">{vendors}</p>
       </Card>
     </div>
   );

@@ -1,14 +1,89 @@
 "use client";
 
 import { useRef, useState, type DragEvent } from "react";
-import { UploadCloud } from "lucide-react";
+import { UploadCloud, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ButtonVariant, UploadStatus } from "@/constants";
+import { Spinner } from "@/components/ui/spinner";
+import { ButtonVariant, ERROR_STATES, UploadStatus } from "@/constants";
 import { UPLOAD } from "@/server/constants";
 import { cn } from "@/lib/utils/cn";
 import { useUploadDocument } from "../hooks";
-import { useUploadStore } from "../upload-store";
+import { useUploadStore, type UploadItem } from "../upload-store";
 import { validateUploadFile } from "../upload-schema";
+
+/**
+ * One row in the in-flight upload list. Four states, each reading as what's
+ * actually happening rather than a stalled percentage:
+ * queued → uploading (real byte progress) → reading (server-side, no
+ * progress to report, so a spinner rather than a frozen bar) → failed
+ * (the reason, and a way to dismiss it).
+ */
+function UploadListItem({
+  item,
+  onDismiss,
+}: {
+  item: UploadItem;
+  onDismiss: () => void;
+}) {
+  if (item.status === UploadStatus.Failed) {
+    return (
+      <li className="rounded-control bg-danger/10 px-3.5 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-medium text-foreground">
+              {item.filename}
+            </p>
+            <p role="alert" className="mt-0.5 text-[13px] text-danger">
+              {item.error ?? ERROR_STATES.uploadFailed}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label={`Dismiss ${item.filename}`}
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <X className="size-3.5" strokeWidth={2} aria-hidden />
+          </button>
+        </div>
+      </li>
+    );
+  }
+
+  const reading = item.status === UploadStatus.Processing;
+
+  return (
+    <li>
+      <div className="flex items-center justify-between gap-3 text-[13px]">
+        <span className="truncate text-foreground">{item.filename}</span>
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-muted">
+          {reading && <Spinner className="size-3" />}
+          {reading ? "Reading…" : `${item.percent}%`}
+        </span>
+      </div>
+      <div
+        role="progressbar"
+        aria-valuenow={item.percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={
+          reading ? `Reading ${item.filename}` : `Uploading ${item.filename}`
+        }
+        className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-raised"
+      >
+        <div
+          className={cn(
+            "h-full rounded-full bg-accent transition-[width]",
+            // Nothing client-side can measure server-side reading progress,
+            // so the bar pulses instead of sitting frozen at 100%.
+            reading && "animate-pulse",
+          )}
+          style={{ width: `${item.percent}%` }}
+        />
+      </div>
+    </li>
+  );
+}
 
 /**
  * Drop target plus a real file input. The input is the accessible path — a
@@ -24,11 +99,12 @@ export function UploadPanel() {
   const [rejected, setRejected] = useState<string | null>(null);
 
   const upload = useUploadDocument();
-  const { items, enqueue, setProgress, setStatus, fail } = useUploadStore();
+  const { items, enqueue, setProgress, setStatus, fail, dismiss } = useUploadStore();
 
-  const active = items.filter(
-    (item) => item.status !== UploadStatus.Done && item.status !== UploadStatus.Failed,
-  );
+  // Done items are already in the table below — showing them here too is
+  // redundant. Failed items stay until dismissed: silently dropping them was
+  // the bug (an upload could fail with nothing on screen to show for it).
+  const active = items.filter((item) => item.status !== UploadStatus.Done);
 
   async function send(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -50,7 +126,7 @@ export function UploadPanel() {
         });
         setStatus(id, UploadStatus.Done, result.document.id);
       } catch (error) {
-        fail(id, error instanceof Error ? error.message : "Upload failed");
+        fail(id, error instanceof Error ? error.message : ERROR_STATES.uploadFailed);
       }
     }
   }
@@ -113,29 +189,7 @@ export function UploadPanel() {
       {active.length > 0 && (
         <ul className="mx-auto mt-7 max-w-md space-y-3 text-left">
           {active.map((item) => (
-            <li key={item.id}>
-              <div className="flex items-center justify-between gap-3 text-[13px]">
-                <span className="truncate text-foreground">{item.filename}</span>
-                <span className="shrink-0 text-muted">
-                  {item.status === UploadStatus.Uploading
-                    ? `${item.percent}%`
-                    : "Reading…"}
-                </span>
-              </div>
-              <div
-                role="progressbar"
-                aria-valuenow={item.percent}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={`Uploading ${item.filename}`}
-                className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-raised"
-              >
-                <div
-                  className="h-full rounded-full bg-accent transition-[width]"
-                  style={{ width: `${item.percent}%` }}
-                />
-              </div>
-            </li>
+            <UploadListItem key={item.id} item={item} onDismiss={() => dismiss(item.id)} />
           ))}
         </ul>
       )}

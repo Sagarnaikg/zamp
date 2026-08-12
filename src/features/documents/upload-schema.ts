@@ -7,7 +7,7 @@ import { API_MESSAGES, UPLOAD } from "@/server/constants";
  * server still enforces the same limits — this is UX, not security, and the
  * shared constants are what keep the two from drifting apart.
  */
-export const uploadSchema = z.object({
+const uploadSchema = z.object({
   file: z.instanceof(File).superRefine((file, ctx) => {
     if (!UPLOAD.acceptedMimeTypes.includes(file.type as never)) {
       ctx.addIssue({
@@ -29,8 +29,6 @@ export const uploadSchema = z.object({
     }
   }),
 });
-
-export type UploadInput = z.infer<typeof uploadSchema>;
 
 /** Validates one file, returning the first problem in the user's words. */
 export function validateUploadFile(file: File): string | null {

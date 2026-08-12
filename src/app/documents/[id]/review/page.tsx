@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { FileText, ListChecks, Workflow } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { FileEdit, FileText, Waypoints } from "lucide-react";
 import { DocumentStatus } from "@/server/constants";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
@@ -33,8 +33,8 @@ import { AuditTrail } from "@/features/documents/components/audit-trail";
 import { PipelinePanel } from "@/features/documents/components/pipeline-panel";
 
 const TABS = [
-  { value: ReviewTab.Values, label: "Extracted values", icon: ListChecks },
-  { value: ReviewTab.Pipeline, label: "How it was read", icon: Workflow },
+  { value: ReviewTab.Values, label: "Extracted values", icon: FileEdit },
+  { value: ReviewTab.Pipeline, label: "Extraction pipeline", icon: Waypoints },
 ];
 
 /**
@@ -50,11 +50,20 @@ const TABS = [
 export default function ReviewPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const { data, isPending, isError, error, refetch } = useDocument(id);
   const accept = useAcceptDocument(id);
   const reject = useRejectDocument(id);
-  const [tab, setTab] = useState<ReviewTab | null>(null);
+
+  // A document row can deep-link straight to a tab (?tab=pipeline); once the
+  // user picks one by hand that always wins over the link they arrived on.
+  const linkedTab = searchParams.get("tab");
+  const initialTab =
+    linkedTab === ReviewTab.Pipeline || linkedTab === ReviewTab.Values
+      ? linkedTab
+      : null;
+  const [tab, setTab] = useState<ReviewTab | null>(initialTab);
 
   if (isPending) {
     return (
@@ -97,17 +106,19 @@ export default function ReviewPage() {
         back={{ href: ROUTES.documents, label: "Documents" }}
         title="Review document"
         subtitle={document.filename}
+        titleBadge={
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[13px] font-medium",
+              STATUS_STYLES[status],
+            )}
+          >
+            {processing && <Spinner className="size-3" />}
+            {STATUS_LABELS[status]}
+          </span>
+        }
         actions={
           <>
-            <span
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[13px] font-medium",
-                STATUS_STYLES[status],
-              )}
-            >
-              {processing && <Spinner className="size-3" />}
-              {STATUS_LABELS[status]}
-            </span>
             {canReject && (
               <Button
                 variant={ButtonVariant.Secondary}
@@ -161,7 +172,7 @@ export default function ReviewPage() {
           <Card className="p-6 sm:p-7">
             <div className="mb-6 flex items-center gap-3">
               <span className="inline-flex size-9 items-center justify-center rounded-full bg-surface-raised">
-                <ListChecks className="size-4" strokeWidth={1.75} aria-hidden />
+                <FileEdit className="size-4" strokeWidth={1.75} aria-hidden />
               </span>
               <h2 className="text-sm font-semibold text-foreground">Extracted values</h2>
             </div>

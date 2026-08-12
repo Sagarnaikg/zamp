@@ -31,6 +31,8 @@ interface UploadState {
   setStatus: (id: string, status: UploadStatus, documentId?: string) => void;
   fail: (id: string, error: string) => void;
   clearFinished: () => void;
+  /** Removes one item — how a user closes a failed upload's error message. */
+  dismiss: (id: string) => void;
 }
 
 function replace(
@@ -56,7 +58,10 @@ export const useUploadStore = create<UploadState>((set) => ({
     set((state) => ({
       items: replace(state.items, id, {
         percent,
-        status: UploadStatus.Uploading,
+        // The bytes are sent at 100 — what happens after that is the server
+        // reading the document, not more uploading, and the UI should say so
+        // rather than sitting at "100%" with no explanation for the wait.
+        status: percent >= 100 ? UploadStatus.Processing : UploadStatus.Uploading,
       }),
     })),
 
@@ -72,4 +77,7 @@ export const useUploadStore = create<UploadState>((set) => ({
     set((state) => ({
       items: state.items.filter((item) => item.status !== UploadStatus.Done),
     })),
+
+  dismiss: (id) =>
+    set((state) => ({ items: state.items.filter((item) => item.id !== id) })),
 }));

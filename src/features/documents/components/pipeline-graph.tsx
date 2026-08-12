@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Maximize2, Minus, Plus } from "lucide-react";
+import { useRef, useState, type WheelEvent } from "react";
+import { RotateCcw } from "lucide-react";
 import { formatDuration } from "@/lib/utils/format";
 import { layoutPipeline } from "../pipeline-layout";
 import { PipelineNodeCard } from "./pipeline-node-card";
@@ -9,13 +9,14 @@ import type { DocumentPipeline } from "../types";
 
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 1.25;
-const ZOOM_STEP = 0.15;
+/** How much one wheel notch/pinch step changes the zoom. */
+const ZOOM_WHEEL_SENSITIVITY = 0.0015;
 /**
- * Fitting must never shrink the graph into illegibility — below roughly this
- * scale the card text stops being readable, at which point panning a legible
- * graph beats seeing an unreadable whole. Manual zoom can still go lower.
+ * The starting zoom, and what "Reset view" returns to. Near-true-size rather
+ * than an auto-fit-to-width ratio — a computed fit shrank small pipelines
+ * down for no reason and made the cards harder to read on load.
  */
-const FIT_MIN_ZOOM = 0.5;
+const DEFAULT_ZOOM = 0.95;
 
 function Totals({ totals }: { totals: DocumentPipeline["totals"] }) {
   const items = [
@@ -48,39 +49,38 @@ function Totals({ totals }: { totals: DocumentPipeline["totals"] }) {
  */
 export function PipelineGraph({ pipeline }: { pipeline: DocumentPipeline }) {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(0.6);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
 
   const { nodes, edges, width, height } = layoutPipeline(pipeline.nodes);
 
-  const fit = useCallback(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const available = viewport.clientWidth - 24;
-    setZoom(Math.min(MAX_ZOOM, Math.max(FIT_MIN_ZOOM, available / width)));
-  }, [width]);
+  const resetView = () => setZoom(DEFAULT_ZOOM);
 
-  // Refit when the viewport changes size, not just on mount — otherwise the
-  // zoom stays wrong after a window resize or a sidebar opening.
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const observer = new ResizeObserver(fit);
-    observer.observe(viewport);
-    return () => observer.disconnect();
-  }, [fit]);
+  // Ctrl/Cmd+wheel is how trackpad pinch and mouse-wheel zoom both arrive in
+  // the browser; a plain wheel is left alone so it keeps scrolling the
+  // viewport's native overflow — that's the panning.
+  function onWheel(event: WheelEvent<HTMLDivElement>) {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    setZoom((z) =>
+      Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z - event.deltaY * ZOOM_WHEEL_SENSITIVITY)),
+    );
+  }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       <Totals totals={pipeline.totals} />
 
-      <div className="relative overflow-hidden rounded-card bg-surface-raised">
+      <div
+        className="relative overflow-hidden rounded-card bg-surface-raised"
+        // Fills essentially all the room below the totals bar, rather than
+        // the previous fixed cap — the graph is the point of this tab.
+        style={{ height: "calc(100vh - 20rem)", minHeight: "32rem" }}
+      >
         <div
           ref={viewportRef}
-          className="overflow-auto"
+          onWheel={onWheel}
+          className="size-full overflow-auto"
           style={{
-            // Max, not fixed: a short pipeline shouldn't leave half a screen
-            // of empty canvas below it.
-            maxHeight: "min(62vh, 620px)",
             // The reference's dotted canvas, which also makes panning legible.
             backgroundImage: "radial-gradient(var(--border-strong) 1px, transparent 1px)",
             backgroundSize: "22px 22px",
@@ -129,40 +129,21 @@ export function PipelineGraph({ pipeline }: { pipeline: DocumentPipeline }) {
           </div>
         </div>
 
-        <div className="absolute bottom-4 left-4 flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-full bg-surface p-1 shadow-card">
-            <button
-              type="button"
-              onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z - ZOOM_STEP))}
-              disabled={zoom <= MIN_ZOOM}
-              aria-label="Zoom out"
-              className="inline-flex size-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-raised hover:text-foreground disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-accent"
-            >
-              <Minus className="size-4" strokeWidth={2} aria-hidden />
-            </button>
-            <span
-              aria-live="polite"
-              className="min-w-11 text-center text-[12px] font-medium tabular-nums text-foreground"
-            >
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              type="button"
-              onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z + ZOOM_STEP))}
-              disabled={zoom >= MAX_ZOOM}
-              aria-label="Zoom in"
-              className="inline-flex size-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-raised hover:text-foreground disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-accent"
-            >
-              <Plus className="size-4" strokeWidth={2} aria-hidden />
-            </button>
-          </div>
+        <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-full bg-surface py-1 pl-4 pr-1 shadow-card">
+          <span
+            aria-live="polite"
+            className="text-[12px] font-medium tabular-nums text-muted"
+          >
+            {Math.round(zoom * 100)}%
+          </span>
           <button
             type="button"
-            onClick={fit}
-            aria-label="Fit pipeline to view"
-            className="inline-flex size-10 items-center justify-center rounded-full bg-surface text-muted shadow-card transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
+            onClick={resetView}
+            aria-label="Reset view"
+            title="Reset view"
+            className="inline-flex size-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
           >
-            <Maximize2 className="size-4" strokeWidth={1.75} aria-hidden />
+            <RotateCcw className="size-3.5" strokeWidth={1.75} aria-hidden />
           </button>
         </div>
       </div>

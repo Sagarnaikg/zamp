@@ -8,7 +8,14 @@ import { PipelineGraph } from "./pipeline-graph";
 export function PipelinePanel({ documentId }: { documentId: string }) {
   const { data, isPending, isError, error, refetch } = useDocumentPipeline(documentId);
 
-  if (isPending) return <Skeleton className="h-125 rounded-card" />;
+  if (isPending) {
+    return (
+      <Skeleton
+        className="rounded-card"
+        style={{ height: "calc(100vh - 20rem)", minHeight: "32rem" }}
+      />
+    );
+  }
   if (isError) return <ErrorState error={error} onRetry={() => refetch()} />;
 
   return <PipelineGraph pipeline={data} />;
