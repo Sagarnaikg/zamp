@@ -4,13 +4,10 @@
  * accessor now means adding that later touches this file only.
  */
 export interface FeatureFlags {
-  /** The pipeline graph view — expensive to render, useful to hide while iterating. */
-  pipelineVisualization: boolean;
   /** Natural-language ledger query box. */
   naturalLanguageQuery: boolean;
 }
 
 export const features: FeatureFlags = {
-  pipelineVisualization: true,
   naturalLanguageQuery: true,
 };

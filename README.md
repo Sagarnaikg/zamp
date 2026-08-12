@@ -1,47 +1,140 @@
 # Zamp — Invoice & Receipt Intelligence
 
 Turn messy invoices, receipts, and expense documents into a clean, queryable
-expense ledger — with field-level confidence you can actually defend.
+expense ledger — with field-level confidence you can actually defend, and a
+plain-language interface for asking questions about what's in it.
 
-> Work in progress. Full setup guide and product walkthrough land with the
-> final polish pass. Design decisions are logged as they happen in
-> [decisions.md](decisions.md).
+> Every real decision made while building this — and why the alternatives
+> were rejected — is logged as it happened in [decisions.md](decisions.md).
+> This README is about running the thing; that file is about why it's built
+> the way it is.
 
-## Quick start
+## What is this?
 
-Create a `.env` file in the project root:
+A finance person uploads an invoice, receipt, or scan. The system reads it,
+checks its own arithmetic, cross-reads it with a second model when that's
+worth paying for, and scores every extracted field independently — so the
+person reviewing it knows exactly which numbers to trust and which to check
+by eye, instead of silently trusting a single LLM's output. Once a document
+is accepted, it lands in an expense ledger you can browse as a table or ask
+about in plain English ("how much did we spend on software last quarter?"),
+with every answer traceable back to the specific filters it ran and the
+specific documents it matched.
+
+The interesting engineering problem here isn't "call an LLM to extract
+fields" — it's building a system a finance user can actually trust the output
+of, given that no single extraction is ever 100% reliable.
+
+## Architecture at a glance
+
+- **One Next.js app, not a separate frontend/backend.** App Router pages and
+  API routes live in the same codebase and deploy together; there's nothing
+  to run in two terminals.
+- **Multi-provider LLM routing.** Google, OpenAI, and Anthropic are supported
+  through a single LangChain interface. Only one provider key is required —
+  the app discovers which models your account can actually reach at startup
+  rather than hardcoding model IDs, and a second configured provider
+  automatically strengthens the confidence engine (see below).
+- **The confidence engine** combines four independent signals per field —
+  arithmetic reconciliation, format/plausibility, cross-model agreement, and
+  duplicate detection — into a confidence score, with an escalation ladder
+  that settles disagreements with a focused third reading before handing
+  anything unresolved to a human.
+- **Every ingestion run is traced** stage by stage (what ran, what was
+  skipped and why, which model, what it cost) and rendered as a graph in the
+  review UI — not just logged, but shown.
+- **No accounts.** Workspaces are anonymous and per-browser, via an httpOnly
+  cookie set on first visit. This is intentionally the seam where real auth
+  would attach later.
+- **Ask-the-ledger conversations persist.** Questions and their answers
+  (the filters that actually ran, not the model's restatement of them) are
+  stored per thread, so a conversation survives a reload and can be reopened
+  without re-asking.
+
+## Tech stack
+
+| | |
+|---|---|
+| Framework | Next.js 16 (App Router), React 19, TypeScript |
+| Database | PostgreSQL via Drizzle ORM |
+| LLM | LangChain's unified chat-model interface — Google Gemini, OpenAI, Anthropic |
+| Validation | Zod — both LLM structured output and the NL→SQL-safe query DSL |
+| Frontend state | TanStack Query (server state) + Zustand (the one piece of client-only global state) |
+| Styling | Tailwind CSS v4 + Framer Motion |
+| Forms | React Hook Form |
+| Testing | Vitest + Testing Library |
+| File storage | Local disk in dev, Vercel Blob in production (auto-selected) |
+
+## Prerequisites
+
+- **Node.js ≥ 20.9** (required by Next.js 16) and npm
+- **A PostgreSQL database.** Either Docker (for the one-command setup below)
+  or any Postgres instance you already have — a connection string is all
+  that's needed
+- **At least one LLM provider API key** — Google, OpenAI, or Anthropic
+
+## Environment variables
+
+Copy the template and fill it in:
 
 ```bash
-# Required: any Postgres connection string (docker compose up -d gives you this one)
-DATABASE_URL=postgres://zamp:zamp@localhost:5432/zamp_dev
-
-# Required: at least ONE provider key. On startup the app asks each
-# configured provider which models your account can actually use, so there
-# are no model IDs to pin or keep up to date.
-GOOGLE_API_KEY=your-key-here
-# OPENAI_API_KEY=...
-# ANTHROPIC_API_KEY=...
-#
-# A second provider strengthens the confidence engine's agreement signal:
-# two providers read each document, instead of one provider reading it two
-# different ways.
-
-# Optional: Vercel Blob storage. When unset, files are stored in ./uploads.
-# BLOB_READ_WRITE_TOKEN=...
+cp .env.example .env
 ```
 
-Check setup at any time with `GET /api/status` — it reports which providers
-were found, which models they resolved to, and a plain-English problem
-message if nothing usable was reachable.
+| Variable | Required | Notes |
+|---|---|---|
+| `DATABASE_URL` | Yes | Any Postgres connection string. Matches `docker-compose.yml` by default. |
+| `GOOGLE_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | At least one | The app discovers usable models per provider at startup — no model IDs to configure. A second key improves confidence scoring via cross-provider agreement. |
+| `BLOB_READ_WRITE_TOKEN` | No | Vercel Blob storage for uploads. Unset in local dev — files go to `./uploads` on disk instead. |
+| `NEXT_PUBLIC_API_BASE_URL` | No | Client-side API base URL. Leave unset for same-origin (the normal case). |
+| `NEXT_PUBLIC_ERROR_REPORTING_URL` | No | Where client-side error reports are POSTed in production. Leave unset to disable. |
 
-Then:
+Check setup at any time — locally or once deployed — with `GET /api/status`:
+it reports which providers were found, which models they resolved to, and a
+plain-English problem message if nothing usable was reachable.
+
+## Local setup
 
 ```bash
-docker compose up -d   # local Postgres (skip if DATABASE_URL points elsewhere)
+docker compose up -d   # starts local Postgres — skip if DATABASE_URL points elsewhere
 npm install
-npx drizzle-kit migrate
+npm run db:migrate
 npm run dev
 ```
+
+The app is now running at [http://localhost:3000](http://localhost:3000).
+
+## Running the app
+
+There's a single dev server — Next.js serves the pages and the API routes
+together, so `npm run dev` is the only thing to run.
+
+```bash
+npm run dev      # start the dev server (http://localhost:3000)
+npm run build    # production build
+npm run start    # run a production build locally (after `npm run build`)
+```
+
+## Running tests
+
+```bash
+npm test          # unit tests (Vitest) — server logic and UI components
+npm run typecheck # TypeScript, no output emitted
+npm run lint      # ESLint
+```
+
+Tests live under `tests/`, mirroring the `src/` tree they cover, split into a
+Node-environment project for server logic and a jsdom project for components.
+
+## Database
+
+```bash
+npm run db:generate   # generate a migration from schema.ts changes
+npm run db:migrate     # apply pending migrations
+```
+
+Schema lives in `src/server/db/schema.ts`; generated SQL migrations live in
+`src/server/db/migrations/`.
 
 ## Adding an LLM provider
 
@@ -103,7 +196,7 @@ src/
 ├── constants/         # Client-side constants (routes, UI enums, copy)
 ├── lib/               # API client, query client, observability, utils
 ├── server/            # Backend layer — never imported by client code
-│   ├── services/      #   Business logic / use-cases (ingestion, review, query)
+│   ├── services/      #   Business logic / use-cases (ingestion, review, query, conversations)
 │   ├── constants/     #   Enums + config + user-facing messages, single source of truth
 │   ├── db/            #   Drizzle schema + client + SQL migrations
 │   ├── storage/       #   File storage drivers (local disk / Vercel Blob)

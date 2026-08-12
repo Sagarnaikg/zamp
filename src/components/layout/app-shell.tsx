@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Layers } from "lucide-react";
 import { A11Y, ROUTES } from "@/constants";
-import { features } from "@/config/features";
 import { cn } from "@/lib/utils/cn";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -14,13 +13,12 @@ const MAIN_CONTENT_ID = "main-content";
 interface NavItem {
   href: string;
   label: string;
-  enabled: boolean;
 }
 
 // Asking lives on the ledger itself (§5), so there is no separate nav entry.
 const NAV_ITEMS: NavItem[] = [
-  { href: ROUTES.documents, label: "Documents", enabled: true },
-  { href: ROUTES.ledger, label: "Ledger", enabled: true },
+  { href: ROUTES.documents, label: "Documents" },
+  { href: ROUTES.ledger, label: "Ledger" },
 ];
 
 /**
@@ -66,7 +64,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             aria-label={A11Y.primaryNavigation}
             className="flex shrink-0 items-center gap-1.5"
           >
-            {NAV_ITEMS.filter((item) => item.enabled).map((item) => {
+            {NAV_ITEMS.map((item) => {
               const active = pathname.startsWith(item.href);
               return (
                 <Link
