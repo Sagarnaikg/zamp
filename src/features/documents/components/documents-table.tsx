@@ -16,7 +16,7 @@ import {
   TableHeaderCell,
   TableRow,
 } from "@/components/ui/table";
-import type { DocumentSummary } from "../types";
+import type { DocumentListItem } from "../types";
 
 /**
  * Each row deep-links straight into the tab it names, rather than always
@@ -29,7 +29,7 @@ function stopRowClick(event: MouseEvent) {
   event.stopPropagation();
 }
 
-function RowActions({ document }: { document: DocumentSummary }) {
+function RowActions({ document }: { document: DocumentListItem }) {
   const processing = document.status === DocumentStatus.Processing;
 
   return (
@@ -61,14 +61,14 @@ function RowActions({ document }: { document: DocumentSummary }) {
   );
 }
 
-export function DocumentsTable({ documents }: { documents: DocumentSummary[] }) {
+export function DocumentsTable({ documents }: { documents: DocumentListItem[] }) {
   const router = useRouter();
 
   return (
     <Table caption="Uploaded documents">
       <TableHead>
         <TableRow>
-          <TableHeaderCell dense>File name</TableHeaderCell>
+          <TableHeaderCell dense>Document</TableHeaderCell>
           <TableHeaderCell dense>Uploaded</TableHeaderCell>
           <TableHeaderCell dense>Status</TableHeaderCell>
           <TableHeaderCell dense numeric>Actions</TableHeaderCell>
@@ -78,12 +78,15 @@ export function DocumentsTable({ documents }: { documents: DocumentSummary[] }) 
         {documents.map((document) => {
           const status = document.status as DocumentStatus;
           const processing = status === DocumentStatus.Processing;
+          // Nothing extracted yet (still processing, or extraction failed) —
+          // the filename is all there is to call it.
+          const title = document.vendor ?? document.filename;
 
           return (
             <TableRow
               key={document.id}
               // A processing document has nothing to review yet — same reason
-              // its filename below isn't a link either.
+              // its title below isn't a link either.
               onClick={
                 processing
                   ? undefined
@@ -92,17 +95,20 @@ export function DocumentsTable({ documents }: { documents: DocumentSummary[] }) 
             >
               <TableCell dense>
                 {processing ? (
-                  <span className="font-medium text-foreground">
-                    {document.filename}
-                  </span>
+                  <span className="font-medium text-foreground">{title}</span>
                 ) : (
                   <Link
                     href={ROUTES.review(document.id)}
                     onClick={stopRowClick}
                     className="font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                   >
-                    {document.filename}
+                    {title}
                   </Link>
+                )}
+                {document.vendor && (
+                  <span className="block text-[13px] text-muted">
+                    {document.filename}
+                  </span>
                 )}
               </TableCell>
               <TableCell dense>{formatDate(document.createdAt.toString())}</TableCell>

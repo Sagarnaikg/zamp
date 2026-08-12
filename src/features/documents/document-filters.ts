@@ -1,5 +1,5 @@
 import { DocumentStatus } from "@/server/constants";
-import type { DocumentSummary } from "./types";
+import type { DocumentListItem } from "./types";
 
 export interface DocumentFilters {
   search: string;
@@ -51,13 +51,20 @@ function withinRange(createdAt: Date, from: string, to: string): boolean {
  * pure latency, not a real scaling need.
  */
 export function filterDocuments(
-  documents: DocumentSummary[],
+  documents: DocumentListItem[],
   filters: DocumentFilters,
-): DocumentSummary[] {
+): DocumentListItem[] {
   const query = filters.search.trim().toLowerCase();
 
   return documents.filter((document) => {
-    if (query && !document.filename.toLowerCase().includes(query)) return false;
+    if (
+      query &&
+      !document.filename.toLowerCase().includes(query) &&
+      !document.vendor?.toLowerCase().includes(query) &&
+      !document.invoiceNumber?.toLowerCase().includes(query)
+    ) {
+      return false;
+    }
     if (filters.status !== "all" && document.status !== filters.status) return false;
     if (!withinRange(new Date(document.createdAt), filters.dateFrom, filters.dateTo)) {
       return false;

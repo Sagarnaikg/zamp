@@ -429,14 +429,33 @@ async function processDocument(
 // Public API
 // ---------------------------------------------------------------------------
 
+/** Every documents column except the pipeline trace (§23) — that's a
+ * per-document diagnostic view, fetched on demand from its own endpoint. */
+const listColumns = {
+  id: documents.id,
+  workspaceId: documents.workspaceId,
+  filename: documents.filename,
+  mimeType: documents.mimeType,
+  fileKind: documents.fileKind,
+  storagePath: documents.storagePath,
+  status: documents.status,
+  error: documents.error,
+  createdAt: documents.createdAt,
+  updatedAt: documents.updatedAt,
+  // Left-joined: a still-processing or failed document has no extraction row
+  // yet, so these are null rather than absent (§9's title-by-vendor UI falls
+  // back to the filename in that case).
+  vendor: extractions.vendor,
+  invoiceNumber: extractions.invoiceNumber,
+};
+
 export function listDocuments(workspaceId: string) {
-  return db.query.documents.findMany({
-    where: eq(documents.workspaceId, workspaceId),
-    orderBy: [desc(documents.createdAt)],
-    // The pipeline trace is a per-document diagnostic view, fetched on demand
-    // from its own endpoint — one per row would dominate this response.
-    columns: { pipeline: false },
-  });
+  return db
+    .select(listColumns)
+    .from(documents)
+    .leftJoin(extractions, eq(extractions.documentId, documents.id))
+    .where(eq(documents.workspaceId, workspaceId))
+    .orderBy(desc(documents.createdAt));
 }
 
 /** Store an uploaded file, then run it through the pipeline. */

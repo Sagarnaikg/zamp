@@ -40,8 +40,8 @@ export function DocumentFiltersBar({
     <div className="flex flex-wrap items-center gap-3">
       <div className="w-48">
         <SearchInput
-          label="Search by filename"
-          placeholder="Search by filename…"
+          label="Search by vendor or filename"
+          placeholder="Search by vendor or filename…"
           value={filters.search}
           onChange={(event) => set("search", event.target.value)}
         />
