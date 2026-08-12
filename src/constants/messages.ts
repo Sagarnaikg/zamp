@@ -27,6 +27,10 @@ export const ERROR_STATES = {
   uploadFailed: "Upload failed",
 } as const;
 
+export const SAMPLES = {
+  prompt: "No invoice handy? Download a sample and upload it:",
+} as const;
+
 export const ACTIONS = {
   retry: "Try again",
   accept: "Accept",

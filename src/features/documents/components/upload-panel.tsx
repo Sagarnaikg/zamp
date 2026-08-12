@@ -1,10 +1,17 @@
 "use client";
 
 import { useRef, useState, type DragEvent } from "react";
-import { UploadCloud, X } from "lucide-react";
+import { Download, UploadCloud, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { ButtonVariant, ERROR_STATES, UploadStatus } from "@/constants";
+import {
+  ButtonVariant,
+  ERROR_STATES,
+  SAMPLES,
+  SAMPLE_DOCUMENTS,
+  UploadStatus,
+  sampleUrl,
+} from "@/constants";
 import { UPLOAD } from "@/server/constants";
 import { cn } from "@/lib/utils/cn";
 import { useUploadDocument } from "../hooks";
@@ -82,6 +89,47 @@ function UploadListItem({
         />
       </div>
     </li>
+  );
+}
+
+/**
+ * A way in for someone with no invoice of their own to hand. Each sample
+ * reaches a different path through the pipeline, so the descriptions say what
+ * a sample is for rather than just naming the file.
+ *
+ * Plain anchors with `download` — these are static files, so there's nothing
+ * for the client to do beyond pointing at them.
+ */
+function SampleDownloads() {
+  return (
+    <div className="mx-auto mt-8 max-w-2xl border-t border-border pt-6">
+      <p className="text-[13px] text-muted">{SAMPLES.prompt}</p>
+      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+        {SAMPLE_DOCUMENTS.map((sample) => (
+          <li key={sample.filename}>
+            <a
+              href={sampleUrl(sample.filename)}
+              download
+              className="flex h-full items-start gap-2.5 rounded-control bg-surface-raised px-3.5 py-2.5 text-left transition-colors hover:bg-surface-sunken focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <Download
+                className="mt-0.5 size-3.5 shrink-0 text-muted"
+                strokeWidth={2}
+                aria-hidden
+              />
+              <span className="min-w-0">
+                <span className="block text-[13px] font-medium text-foreground">
+                  {sample.label}
+                </span>
+                <span className="block text-[12px] leading-snug text-muted">
+                  {sample.description}
+                </span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -193,6 +241,8 @@ export function UploadPanel() {
           ))}
         </ul>
       )}
+
+      <SampleDownloads />
     </div>
   );
 }
