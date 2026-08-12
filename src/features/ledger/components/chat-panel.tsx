@@ -14,11 +14,7 @@ import {
 import { MessageRole, QUERY } from "@/server/constants";
 import { ROUTES } from "@/constants";
 import { cn } from "@/lib/utils/cn";
-import {
-  Amount,
-  UnknownCurrencyNote,
-  UNKNOWN_CURRENCY_HINT,
-} from "@/components/domain/amount";
+import { formatAmount } from "@/lib/utils/format";
 import { Spinner } from "@/components/ui/spinner";
 import { formatAnswerFigure } from "../answer";
 import {
@@ -65,12 +61,8 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
       <p className="text-[13px] leading-snug text-foreground">{message.content}</p>
 
       {figure !== null && (
-        <p
-          className="mt-2 flex flex-col text-xl font-semibold tracking-tight text-foreground"
-          title={figure.currencyUnknown ? UNKNOWN_CURRENCY_HINT : undefined}
-        >
-          <span>{figure.text}</span>
-          {figure.currencyUnknown && <UnknownCurrencyNote />}
+        <p className="mt-2 text-xl font-semibold tracking-tight text-foreground">
+          {figure}
         </p>
       )}
 
@@ -92,7 +84,7 @@ function MessageBubble({ message }: { message: ConversationMessage }) {
                 {row.vendor ?? row.filename}
               </Link>
               <span className="shrink-0 text-[12px] tabular-nums text-muted">
-                <Amount value={row.total} currency={row.currency} />
+                {formatAmount(row.total, row.currency)}
               </span>
             </li>
           ))}

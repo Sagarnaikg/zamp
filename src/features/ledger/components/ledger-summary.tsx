@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { Amount } from "@/components/domain/amount";
+import { formatAmount } from "@/lib/utils/format";
 import type { LedgerRow } from "../types";
 
 /**
@@ -36,7 +36,7 @@ export function LedgerSummary({ rows }: { rows: LedgerRow[] }) {
           ) : (
             totals.map(([currency, amount]) => (
               <p key={currency} className="text-2xl font-semibold tracking-tight">
-                <Amount value={String(amount)} currency={currency || null} />
+                {formatAmount(String(amount), currency || null)}
               </p>
             ))
           )}

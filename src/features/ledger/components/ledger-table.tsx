@@ -8,8 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ROUTES } from "@/constants";
-import { Amount } from "@/components/domain/amount";
-import { formatDate, formatText } from "@/lib/utils/format";
+import { formatAmount, formatDate, formatText } from "@/lib/utils/format";
 import type { LedgerRow } from "../types";
 
 /**
@@ -54,7 +53,7 @@ export function LedgerTable({ rows }: { rows: LedgerRow[] }) {
             </TableCell>
             <TableCell numeric>
               <span className="font-medium">
-                <Amount value={row.total} currency={row.currency} />
+                {formatAmount(row.total, row.currency)}
               </span>
             </TableCell>
           </TableRow>
