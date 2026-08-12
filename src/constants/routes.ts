@@ -12,6 +12,11 @@ export const ROUTES = {
   ledger: "/ledger",
 } as const;
 
+/** Off-app destinations, kept beside the in-app routes for the same reason. */
+export const EXTERNAL_LINKS = {
+  documentation: "https://sagarnaikg.github.io/zamp/",
+} as const;
+
 /** Server endpoints, kept beside the page routes for the same reason. */
 export const API_ROUTES = {
   documents: "/api/documents",

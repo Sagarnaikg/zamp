@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { Layers } from "lucide-react";
-import { A11Y, ROUTES } from "@/constants";
+import { BookOpen, Layers } from "lucide-react";
+import { A11Y, EXTERNAL_LINKS, ROUTES } from "@/constants";
 import { cn } from "@/lib/utils/cn";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -86,7 +86,17 @@ export function AppShell({ children }: { children: ReactNode }) {
             })}
           </nav>
 
-          <div className="flex flex-1 items-center justify-end">
+          <div className="flex flex-1 items-center justify-end gap-1">
+            <a
+              href={EXTERNAL_LINKS.documentation}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Documentation"
+              aria-label="Documentation (opens in a new tab)"
+              className="inline-flex size-10 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-raised hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <BookOpen className="size-4" strokeWidth={1.75} aria-hidden />
+            </a>
             <ThemeToggle />
           </div>
         </div>
