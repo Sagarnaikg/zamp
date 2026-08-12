@@ -205,7 +205,6 @@ src/
 
 tests/                 # Unit tests, mirroring the src/ tree (e.g. tests/server/llm/errors.test.ts)
 samples/               # Test/demo documents with known planted problems
-scripts/               # Dev tooling (sample document generation)
 ```
 
 Root config files (`package.json`, `tsconfig.json`, `next.config.ts`,

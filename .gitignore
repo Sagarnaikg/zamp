@@ -44,6 +44,9 @@ next-env.d.ts
 # uploaded documents (local disk storage driver)
 uploads/
 
+# one-off dev tooling used to generate sample documents, not part of the app
+scripts/
+
 # local agent settings
 .claude/
 
