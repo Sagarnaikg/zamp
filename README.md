@@ -94,7 +94,7 @@ npm install
 Create a `.env` file in the project root:
 
 ```env
-DATABASE_URL=postgres://zamp:zamp@localhost:5432/zamp_dev
+DATABASE_URL=<db_url>
 
 GOOGLE_API_KEY=your_key
 # OPENAI_API_KEY=your_key
